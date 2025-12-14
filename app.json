@@ -4,7 +4,7 @@
     "slug": "Text2reel",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/text-to-reel-icon.png",
     "scheme": "text2reel",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -13,24 +13,22 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#18202B",
+        "foregroundImage": "./assets/images/text-to-reel-icon.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/text-to-reel-icon.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/text-to-reel-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
@@ -38,11 +36,16 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "supabaseUrl": "https://eujqfscakbmdvzgyvqzg.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1anFmc2Nha2JtZHZ6Z3l2cXpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk2ODAyMzksImV4cCI6MjA3NTI1NjIzOX0.Z_7lfwo4CqVCDeeGfPf7Wc5P_mWh-mX-SwZ6Bk2NnRA"
     }
   }
 }
