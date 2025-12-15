@@ -33,9 +33,8 @@ export default function LoginScreen() {
 
       // Successful login - navigation will be handled by auth state change
       router.replace('/dashboard');
-    } catch (err) {
+    } catch {
       setError('An error occurred during login');
-      console.error(err);
     } finally {
       setLoading(false);
     }

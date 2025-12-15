@@ -32,9 +32,8 @@ export default function WelcomeScreen() {
       }
 
       // OAuth will open in browser, navigation will be handled by auth state change
-    } catch (err) {
+    } catch {
       Alert.alert("Error", "An error occurred during Google sign-in");
-      console.error(err);
       setLoading(false);
     }
   };

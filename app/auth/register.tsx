@@ -73,9 +73,8 @@ export default function RegisterScreen() {
 
       // Navigate to verification pending or dashboard
       router.replace('/auth/verification-pending');
-    } catch (err) {
+    } catch {
       setError('An error occurred during registration');
-      console.error(err);
     } finally {
       setLoading(false);
     }

@@ -34,9 +34,8 @@ export default function ForgotPasswordScreen() {
       }
 
       setSuccess(true);
-    } catch (err) {
+    } catch {
       setError('An error occurred. Please try again.');
-      console.error(err);
     } finally {
       setLoading(false);
     }

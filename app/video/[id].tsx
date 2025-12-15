@@ -1,10 +1,15 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
   Dimensions,
   Animated,
   ActivityIndicator,
@@ -27,13 +32,13 @@ import type { VideoRecord } from "@/constants/constants";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const AUTO_HIDE_DELAY = 3000; // 3 seconds
+const BOTTOM_MENU_HEIGHT = 110;
 
 interface VideoPlayerItemProps {
   video: VideoRecord;
-  isActive: boolean;
 }
 
-function VideoPlayerItem({ video, isActive }: VideoPlayerItemProps) {
+function VideoPlayerItem({ video }: VideoPlayerItemProps) {
   const player = useVideoPlayer(
     video.status === "completed" && video.signed_url ? video.signed_url : "",
     (player) => {
@@ -43,12 +48,29 @@ function VideoPlayerItem({ video, isActive }: VideoPlayerItemProps) {
   );
 
   useEffect(() => {
-    if (player && isActive && video.status === "completed") {
-      player.play();
-    } else if (player && !isActive) {
-      player.pause();
+    if (!player) {
+      return;
     }
-  }, [player, isActive, video.status]);
+
+    if (video.status !== "completed" || !video.signed_url) {
+      return;
+    }
+
+    // Autoplay once ready when entering full screen
+    player.play();
+    const timeoutId = setTimeout(() => {
+      try {
+        player.play();
+      } catch {
+        // Ignore playback errors on initial nudge
+      }
+    }, 50);
+
+    return () => {
+      clearTimeout(timeoutId);
+      // Rely on unmounting VideoView to stop playback; avoid pause() errors
+    };
+  }, [player, video.status, video.signed_url]);
 
   if (video.status !== "completed" || !video.signed_url) {
     return (
@@ -71,7 +93,7 @@ function VideoPlayerItem({ video, isActive }: VideoPlayerItemProps) {
         <VideoView
           player={player}
           style={styles.video}
-          contentFit="contain"
+          contentFit="cover"
           nativeControls={false}
           fullscreenOptions={{ enable: false }}
           allowsPictureInPicture={false}
@@ -84,39 +106,21 @@ function VideoPlayerItem({ video, isActive }: VideoPlayerItemProps) {
 export default function VideoViewerScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
-  const { videos, deleteVideo } = useVideos();
+  console.log("params", params);
+  const { videos, deleteVideo, loading } = useVideos();
+  console.log("videos - length", videos.length);
   const { balance } = useBalance();
   const insets = useSafeAreaInsets();
-
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [initialIndexSet, setInitialIndexSet] = useState(false);
   const [uiVisible, setUiVisible] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flatListRef = useRef<FlatList>(null);
-
-  // Find initial index
-  useEffect(() => {
-    if (params.id && videos.length > 0 && !initialIndexSet) {
-      const index = videos.findIndex((v) => v.id === params.id);
-      if (index !== -1) {
-        setCurrentIndex(index);
-        setInitialIndexSet(true);
-        // Scroll to the initial video after a short delay
-        setTimeout(() => {
-          flatListRef.current?.scrollToIndex({
-            index,
-            animated: false,
-          });
-        }, 100);
-      }
-    }
-  }, [params.id, videos, initialIndexSet]);
-
-  const currentVideo = videos[currentIndex] || null;
+  const currentVideo = useMemo(
+    () => videos.find((v) => v.id === params.id) || null,
+    [videos, params.id]
+  );
 
   const hideUI = useCallback(() => {
     Animated.timing(fadeAnim, {
@@ -181,12 +185,8 @@ export default function VideoViewerScreen() {
             setIsDeleting(true);
             try {
               await deleteVideo(currentVideo.id);
-              // Navigate back if this was the last video or go to previous
-              if (videos.length <= 1) {
-                router.back();
-              } else if (currentIndex > 0) {
-                setCurrentIndex(currentIndex - 1);
-              }
+              // After deleting, just go back to the grid
+              router.back();
             } catch {
               Alert.alert("Error", "Failed to delete video. Please try again.");
             } finally {
@@ -226,35 +226,15 @@ export default function VideoViewerScreen() {
           [{ text: "OK" }]
         );
       }
-    } catch (error) {
-      console.error("Download error:", error);
+    } catch {
       Alert.alert("Error", "Failed to download video. Please try again.");
     } finally {
       setIsDownloading(false);
     }
   };
 
-  const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: { index: number | null }[] }) => {
-      if (viewableItems.length > 0 && viewableItems[0].index !== null) {
-        setCurrentIndex(viewableItems[0].index);
-      }
-    }
-  ).current;
-
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 50,
-  }).current;
-
-  const renderVideoItem = ({
-    item,
-    index,
-  }: {
-    item: VideoRecord;
-    index: number;
-  }) => <VideoPlayerItem video={item} isActive={index === currentIndex} />;
-
-  if (videos.length === 0) {
+  if (loading || videos.length === 0) {
+    console.log("loading or videos.length === 0");
     return (
       <LinearGradient
         colors={Colors.background.gradient as [string, string, string]}
@@ -268,9 +248,22 @@ export default function VideoViewerScreen() {
     );
   }
 
-  const topPadding = insets.top + 8; // safe-area aware
-  const backButtonOffset = Math.max(12, insets.top * 0.08); // add a bit more top space
-  const rightIconsOffset = Math.max(10, insets.top * 0.12);
+  if (!currentVideo) {
+    return (
+      <LinearGradient
+        colors={Colors.background.gradient as [string, string, string]}
+        style={styles.container}
+      >
+        <View style={styles.videoPlaceholder}>
+          <Text style={styles.placeholderText}>Video not found.</Text>
+        </View>
+      </LinearGradient>
+    );
+  }
+
+  const topPadding = insets.top; // safe-area only, no extra black spacer
+  const backButtonOffset = Math.max(4, insets.top * 0.05);
+  const rightIconsOffset = Math.max(8, insets.top * 0.1);
 
   return (
     <LinearGradient
@@ -282,34 +275,26 @@ export default function VideoViewerScreen() {
         activeOpacity={1}
         onPress={handleScreenPress}
       >
-        <FlatList
-          ref={flatListRef}
-          data={videos}
-          renderItem={renderVideoItem}
-          keyExtractor={(item) => item.id}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          getItemLayout={(_, index) => ({
-            length: SCREEN_WIDTH,
-            offset: SCREEN_WIDTH * index,
-            index,
-          })}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig}
-          onScrollToIndexFailed={(info) => {
-            // Fallback: scroll to offset
-            const wait = new Promise((resolve) => setTimeout(resolve, 500));
-            wait.then(() => {
-              flatListRef.current?.scrollToIndex({
-                index: info.index,
-                animated: false,
-              });
-            });
-          }}
-        />
+        {/* Single full-screen video */}
+        <VideoPlayerItem video={currentVideo} />
 
         {/* Top UI Overlay */}
+        {/* Always-visible Back Button */}
+        <View
+          style={[
+            styles.backButtonContainer,
+            { top: topPadding + backButtonOffset, left: 16, zIndex: 20 },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="chevron-back" size={28} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+
         <Animated.View
           style={[
             styles.topOverlay,
@@ -319,22 +304,6 @@ export default function VideoViewerScreen() {
             },
           ]}
         >
-          {/* Back Button - absolute top-left */}
-          <View
-            style={[
-              styles.backButtonContainer,
-              { top: topPadding + backButtonOffset, left: 16 },
-            ]}
-          >
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => router.back()}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="chevron-back" size={28} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-
           {/* Right Icons - absolute top-right */}
           <View
             style={[
@@ -391,8 +360,8 @@ export default function VideoViewerScreen() {
           <BottomMenu
             balance={balance}
             onPressBilling={() => router.push("/profile/billing")}
-            onPressProfile={() => router.push("/profile/index" as any)}
-            onPressAdd={() => router.push("/dashboard")}
+            onPressProfile={() => router.push("/profile" as any)}
+            onPressAdd={() => {}}
           />
         </View>
       </TouchableOpacity>
@@ -468,9 +437,13 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 10,
   },
+  flatListContent: {
+    paddingBottom: BOTTOM_MENU_HEIGHT,
+  },
   titleContainer: {
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingBottom: BOTTOM_MENU_HEIGHT - 25,
+    alignItems: "center",
   },
   videoTitle: {
     color: "#FFFFFF",

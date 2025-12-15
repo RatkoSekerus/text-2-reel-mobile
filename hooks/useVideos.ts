@@ -55,11 +55,7 @@ export function useVideos() {
                 signed_url_loading: false,
               };
             }
-          } catch (err) {
-            console.error(
-              `[useVideos] ❌ Failed to get signed url for video ${video?.id}:`,
-              err
-            );
+          } catch {
             return {
               ...video,
               signed_url: video.signed_url ?? null,
@@ -108,7 +104,6 @@ export function useVideos() {
           .range(from, to);
 
         if (fetchError) {
-          console.error("[useVideos] ❌ Error fetching videos:", fetchError);
           setError(fetchError.message);
           if (reset) {
             setLoading(false);
@@ -145,15 +140,6 @@ export function useVideos() {
               const skippedVideos = processedVideos.filter((v) =>
                 existingIds.has(v.id)
               );
-              console.warn(
-                `[useVideos] ⚠️ Some videos were already in the list, skipping ${
-                  processedVideos.length - newVideosToAdd.length
-                } duplicate(s):`,
-                skippedVideos.map((v) => ({
-                  id: v.id,
-                  prompt: v.prompt,
-                }))
-              );
             }
 
             const newVideos = [...prev, ...newVideosToAdd];
@@ -164,7 +150,6 @@ export function useVideos() {
 
         setError(null);
       } catch (err) {
-        console.error("[useVideos] ❌ Error fetching videos:", err);
         setError(err instanceof Error ? err.message : "Failed to fetch videos");
       } finally {
         setLoading(false);
@@ -234,10 +219,6 @@ export function useVideos() {
             else if (event?.id && event?.user_id) {
               record = event;
             } else {
-              console.warn(
-                "[useVideos] Could not extract record from INSERT broadcast. Payload:",
-                event?.payload
-              );
               return;
             }
 
@@ -310,18 +291,8 @@ export function useVideos() {
                         ...prev,
                       ];
                     });
-                  } else {
-                    console.error(
-                      "[useVideos] Error refetching video after INSERT:",
-                      error
-                    );
                   }
-                } catch (err) {
-                  console.error(
-                    "[useVideos] Refetch failed after INSERT broadcast:",
-                    err
-                  );
-                }
+                } catch {}
               }
             }
           }
@@ -343,10 +314,6 @@ export function useVideos() {
             } else if (event?.id && event?.user_id) {
               record = event;
             } else {
-              console.warn(
-                "[useVideos] Could not extract record from UPDATE broadcast. Payload:",
-                event?.payload
-              );
               return;
             }
 
@@ -440,10 +407,6 @@ export function useVideos() {
                           )
                         );
                       } catch (err) {
-                        console.error(
-                          `[useVideos] Failed to get signed url for ${data.id}:`,
-                          err
-                        );
                         // Still update with the data even if signed URL fails
                         setVideos((prev) =>
                           prev.map((v) =>
@@ -470,12 +433,7 @@ export function useVideos() {
                       );
                     }
                   }
-                } catch (err) {
-                  console.error(
-                    "[useVideos] Refetch failed after UPDATE broadcast:",
-                    err
-                  );
-                }
+                } catch {}
               } else if (shouldGenerateSignedUrlDirectly) {
                 try {
                   setVideos((prev) =>
@@ -509,10 +467,6 @@ export function useVideos() {
                     )
                   );
                 } catch (err) {
-                  console.error(
-                    `[useVideos] Failed to get signed url for ${record.id}:`,
-                    err
-                  );
                   setVideos((prev) =>
                     prev.map((v) =>
                       v.id === record.id
@@ -535,6 +489,8 @@ export function useVideos() {
             // @ts-ignore
             let record: any = null;
 
+            console.log("delete event", event);
+
             if (event?.payload?.record) {
               record = event.payload.record;
             } else if (event?.payload?.old_record) {
@@ -548,8 +504,10 @@ export function useVideos() {
             const id = record?.id;
 
             if (id) {
+              console.log("delete id", id);
               setVideos((prev) => {
                 const newVideos = prev.filter((v) => v.id !== id);
+                console.log("newVideos", newVideos);
                 return newVideos;
               });
             }
@@ -557,9 +515,6 @@ export function useVideos() {
         )
         // @ts-ignore
         .subscribe((status: any, err: any) => {
-          if (err) {
-            console.error("[useVideos] Subscription error:", err);
-          }
           if (status === "SUBSCRIBED") {
             if (!isSubscribed) {
               fetchVideos(true);
@@ -567,9 +522,6 @@ export function useVideos() {
             }
           } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
             isSubscribed = false;
-            console.warn(
-              `[useVideos] Realtime connection ${status}. Client will attempt reconnect.`
-            );
           }
         });
 

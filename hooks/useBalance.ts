@@ -32,14 +32,12 @@ export function useBalance() {
         .maybeSingle();
 
       if (fetchError) {
-        console.error("[useBalance] Error fetching balance:", fetchError);
         setBalance(0);
         return;
       }
 
       setBalance(data?.balance || 0);
-    } catch (error) {
-      console.error("[useBalance] Error in fetchBalance:", error);
+    } catch {
       setBalance(0);
     } finally {
       setLoading(false);
@@ -105,10 +103,6 @@ export function useBalance() {
             else if (event?.id && event?.balance !== undefined) {
               record = event;
             } else {
-              console.warn(
-                "[useBalance] Could not extract record from UPDATE broadcast. Payload:",
-                event?.payload
-              );
               return;
             }
 
@@ -119,18 +113,12 @@ export function useBalance() {
         )
         // @ts-ignore
         .subscribe((status: any, err: any) => {
-          if (err) {
-            console.error("[useBalance] Subscription error:", err);
-          }
           if (status === "SUBSCRIBED") {
             if (!isSubscribed) {
               isSubscribed = true;
             }
           } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
             isSubscribed = false;
-            console.warn(
-              `[useBalance] Realtime connection ${status}. Client will attempt reconnect.`
-            );
           }
         });
 

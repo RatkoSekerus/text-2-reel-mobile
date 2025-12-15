@@ -86,12 +86,7 @@ function VideoGridItem({ video }: VideoGridItemProps) {
           }
           clearTimeout(fallbackTimeout);
         };
-      } catch (error) {
-        console.error(
-          `[VideoGridItem] ❌ Error setting up video ${video.id}:`,
-          error
-        );
-      }
+      } catch {}
     };
 
     return setupThumbnail();
@@ -153,6 +148,7 @@ function VideoGridItem({ video }: VideoGridItemProps) {
 export default function DashboardScreen() {
   const router = useRouter();
   const { videos, loading } = useVideos();
+  console.log("videos length - dashboard page", videos.length);
   const { balance } = useBalance();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -166,9 +162,10 @@ export default function DashboardScreen() {
     return filtered;
   }, [videos, searchQuery]);
 
-  const renderVideoItem = ({ item }: { item: VideoRecord }) => (
-    <VideoGridItem video={item} />
-  );
+  const renderVideoItem = ({ item }: { item: VideoRecord }) => {
+    console.log("item", item);
+    return <VideoGridItem video={item} />;
+  };
 
   return (
     <LinearGradient

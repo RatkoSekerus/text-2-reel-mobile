@@ -66,7 +66,6 @@ export const getSignedUrlAndDownload = async function getSignedUrlAndDownload({
 
   if (!res.ok) {
     const txt = await res.text();
-    console.error(`[getSignedUrlAndDownload] ❌ Error response:`, txt);
     throw new Error(`Function error: ${res.status} ${txt}`);
   }
 
