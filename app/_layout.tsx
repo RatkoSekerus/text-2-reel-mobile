@@ -16,12 +16,11 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
           <Stack.Screen
             name="auth/welcome"
             options={{
-              headerShown: false,
               gestureEnabled: false,
               fullScreenGestureEnabled: false,
             }}
@@ -29,7 +28,6 @@ export default function RootLayout() {
           <Stack.Screen
             name="auth/register"
             options={{
-              headerShown: false,
               gestureEnabled: false,
               fullScreenGestureEnabled: false,
               headerBackButtonMenuEnabled: false,
@@ -39,7 +37,6 @@ export default function RootLayout() {
           <Stack.Screen
             name="auth/login"
             options={{
-              headerShown: false,
               gestureEnabled: false,
               fullScreenGestureEnabled: false,
               headerBackButtonMenuEnabled: false,
@@ -49,23 +46,42 @@ export default function RootLayout() {
           <Stack.Screen
             name="auth/forgot-password"
             options={{
-              headerShown: false,
               gestureEnabled: false,
               fullScreenGestureEnabled: false,
               headerBackButtonMenuEnabled: false,
               animation: "none",
             }}
           />
-          <Stack.Screen
-            name="auth/verification-pending"
-            options={{ headerShown: false }}
-          />
+          <Stack.Screen name="auth/verification-pending" />
           <Stack.Screen
             name="dashboard"
             options={{
-              headerShown: false,
               gestureEnabled: false,
               fullScreenGestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="profile/index"
+            options={{
+              headerBackButtonMenuEnabled: false,
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+            }}
+          />
+          <Stack.Screen
+            name="profile/change-password"
+            options={{
+              headerBackButtonMenuEnabled: false,
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+            }}
+          />
+          <Stack.Screen
+            name="profile/billing"
+            options={{
+              headerBackButtonMenuEnabled: false,
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
             }}
           />
         </Stack>

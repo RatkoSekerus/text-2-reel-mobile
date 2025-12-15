@@ -12,6 +12,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { VideoView, useVideoPlayer } from "expo-video";
+import { useRouter, type Href } from "expo-router";
 import { Colors } from "../constants/colors";
 import { useVideos } from "../hooks/useVideos";
 import type { VideoRecord } from "../constants/constants";
@@ -73,7 +74,7 @@ function VideoGridItem({ video }: VideoGridItemProps) {
             try {
               player.currentTime = 0.1;
               player.pause();
-            } catch (error) {}
+            } catch {}
           }
         }, 1000);
 
@@ -140,7 +141,8 @@ function VideoGridItem({ video }: VideoGridItemProps) {
 }
 
 export default function DashboardScreen() {
-  const { videos, loading, error } = useVideos();
+  const router = useRouter();
+  const { videos, loading } = useVideos();
   const { balance } = useBalance();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -220,30 +222,37 @@ export default function DashboardScreen() {
       {/* Sticky Bottom Menu Bar */}
       <View style={styles.bottomMenu}>
         {/* Credit Balance - Left */}
-        <View style={styles.balanceContainer}>
+        <TouchableOpacity
+          style={styles.leftSection}
+          activeOpacity={0.85}
+          onPress={() => router.push("/profile/billing")}
+        >
           <Text style={styles.balanceLabel}>Credits</Text>
           <Text style={styles.balanceAmount}>
             ${balance !== null ? balance.toFixed(2) : "0.00"}
           </Text>
-        </View>
-
-        {/* Plus Icon - Middle */}
-        <TouchableOpacity
-          style={styles.addButton}
-          activeOpacity={0.8}
-          onPress={() => {}}
-        >
-          <Ionicons name="add" size={32} color="#FFFFFF" />
         </TouchableOpacity>
 
         {/* Profile Icon - Right */}
-        <TouchableOpacity
-          style={styles.profileButton}
-          activeOpacity={0.8}
-          onPress={() => {}}
-        >
-          <Ionicons name="person-outline" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
+        <View style={styles.rightSection}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => router.push("/profile" as Href)}
+          >
+            <Ionicons name="person-outline" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Plus Icon - Middle (true center, independent of left/right widths) */}
+        <View pointerEvents="box-none" style={styles.centerOverlay}>
+          <TouchableOpacity
+            style={styles.addButton}
+            activeOpacity={0.8}
+            onPress={() => {}}
+          >
+            <Ionicons name="add" size={32} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
     </LinearGradient>
   );
@@ -368,8 +377,18 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#2a2a2a",
   },
-  balanceContainer: {
+  leftSection: {
     flex: 1,
+    alignItems: "flex-start",
+  },
+  rightSection: {
+    flex: 1,
+    alignItems: "flex-end",
+  },
+  centerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
   },
   balanceLabel: {
     fontSize: 12,
@@ -393,15 +412,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
-  },
-  profileButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#2a2a2a",
-    justifyContent: "center",
-    alignItems: "center",
-    flex: 1,
-    marginLeft: 16,
   },
 });
