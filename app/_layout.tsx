@@ -84,6 +84,14 @@ export default function RootLayout() {
               fullScreenGestureEnabled: true,
             }}
           />
+          <Stack.Screen
+            name="video/[id]"
+            options={{
+              headerShown: false,
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+            }}
+          />
         </Stack>
         <StatusBar style="light" />
       </ThemeProvider>

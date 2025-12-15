@@ -17,6 +17,7 @@ import { Colors } from "../constants/colors";
 import { useVideos } from "../hooks/useVideos";
 import type { VideoRecord } from "../constants/constants";
 import { useBalance } from "../hooks/useBalance";
+import { BottomMenu } from "@/components/BottomMenu";
 
 const { width } = Dimensions.get("window");
 const NUM_COLUMNS = 2;
@@ -27,6 +28,7 @@ interface VideoGridItemProps {
 }
 
 function VideoGridItem({ video }: VideoGridItemProps) {
+  const router = useRouter();
   const player = useVideoPlayer(
     video.status === "completed" && video.signed_url ? video.signed_url : "",
     (player) => {
@@ -95,8 +97,16 @@ function VideoGridItem({ video }: VideoGridItemProps) {
     return setupThumbnail();
   }, [player, video.id, video.status, video.signed_url]);
 
+  const handlePress = () => {
+    router.push(`/video/${video.id}` as any);
+  };
+
   return (
-    <View style={styles.videoItem}>
+    <TouchableOpacity
+      style={styles.videoItem}
+      onPress={handlePress}
+      activeOpacity={0.9}
+    >
       <View style={styles.videoContainer}>
         {video.status === "completed" && video.signed_url && player ? (
           <View style={styles.videoWrapper}>
@@ -136,7 +146,7 @@ function VideoGridItem({ video }: VideoGridItemProps) {
       <Text style={styles.videoTitle} numberOfLines={2}>
         {video.prompt || "Untitled Video"}
       </Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -220,40 +230,12 @@ export default function DashboardScreen() {
       )}
 
       {/* Sticky Bottom Menu Bar */}
-      <View style={styles.bottomMenu}>
-        {/* Credit Balance - Left */}
-        <TouchableOpacity
-          style={styles.leftSection}
-          activeOpacity={0.85}
-          onPress={() => router.push("/profile/billing")}
-        >
-          <Text style={styles.balanceLabel}>Credits</Text>
-          <Text style={styles.balanceAmount}>
-            ${balance !== null ? balance.toFixed(2) : "0.00"}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Profile Icon - Right */}
-        <View style={styles.rightSection}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => router.push("/profile" as Href)}
-          >
-            <Ionicons name="person-outline" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Plus Icon - Middle (true center, independent of left/right widths) */}
-        <View pointerEvents="box-none" style={styles.centerOverlay}>
-          <TouchableOpacity
-            style={styles.addButton}
-            activeOpacity={0.8}
-            onPress={() => {}}
-          >
-            <Ionicons name="add" size={32} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <BottomMenu
+        balance={balance}
+        onPressBilling={() => router.push("/profile/billing")}
+        onPressProfile={() => router.push("/profile" as Href)}
+        onPressAdd={() => {}}
+      />
     </LinearGradient>
   );
 }
@@ -361,56 +343,5 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: "#1a1a1a",
     textAlign: "center",
-  },
-  bottomMenu: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#1a1a1a",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingBottom: 24,
-    borderTopWidth: 1,
-    borderTopColor: "#2a2a2a",
-  },
-  leftSection: {
-    flex: 1,
-    alignItems: "flex-start",
-  },
-  rightSection: {
-    flex: 1,
-    alignItems: "flex-end",
-  },
-  centerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  balanceLabel: {
-    fontSize: 12,
-    color: "#888888",
-    marginBottom: 4,
-  },
-  balanceAmount: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: Colors.cyan[500],
-  },
-  addButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.cyan[500],
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: Colors.cyan[500],
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
   },
 });
