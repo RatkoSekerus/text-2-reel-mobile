@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Colors } from "@/constants/colors";
 import { BottomMenu } from "@/components/BottomMenu";
+import { CreateVideoModal } from "@/components/CreateVideoModal";
 import { useVideos } from "@/hooks/useVideos";
 import { useBalance } from "@/hooks/useBalance";
 import type { VideoRecord } from "@/constants/constants";
@@ -166,6 +167,7 @@ export default function VideoViewerScreen() {
   const [uiVisible, setUiVisible] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -425,10 +427,15 @@ export default function VideoViewerScreen() {
             balance={balance}
             onPressBilling={() => router.push("/profile/billing")}
             onPressProfile={() => router.push("/profile" as any)}
-            onPressAdd={() => {}}
+            onPressAdd={() => setShowCreateModal(true)}
           />
         </View>
       </TouchableOpacity>
+      {/* Create Video Modal */}
+      <CreateVideoModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+      />
     </LinearGradient>
   );
 }

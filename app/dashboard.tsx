@@ -18,6 +18,7 @@ import { useVideos } from "../hooks/useVideos";
 import type { VideoRecord } from "../constants/constants";
 import { useBalance } from "../hooks/useBalance";
 import { BottomMenu } from "@/components/BottomMenu";
+import { CreateVideoModal } from "@/components/CreateVideoModal";
 
 const { width } = Dimensions.get("window");
 const NUM_COLUMNS = 2;
@@ -150,6 +151,7 @@ export default function DashboardScreen() {
   const { videos, loading, loadMore, hasMore, loadingMore } = useVideos();
   const { balance } = useBalance();
   const [searchQuery, setSearchQuery] = useState("");
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const filteredVideos = useMemo(() => {
     const filtered = !searchQuery.trim()
@@ -247,7 +249,12 @@ export default function DashboardScreen() {
         balance={balance}
         onPressBilling={() => router.push("/profile/billing")}
         onPressProfile={() => router.push("/profile" as Href)}
-        onPressAdd={() => {}}
+        onPressAdd={() => setShowCreateModal(true)}
+      />
+      {/* Create Video Modal */}
+      <CreateVideoModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
       />
     </LinearGradient>
   );
