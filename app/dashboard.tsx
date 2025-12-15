@@ -124,7 +124,7 @@ function VideoGridItem({ video }: VideoGridItemProps) {
           </View>
         ) : video.status === "queued" ? (
           <View style={styles.videoPlaceholder}>
-            <Ionicons name="time-outline" size={24} color={Colors.cyan[500]} />
+            <Ionicons name="time-outline" size={24} color="#FBBF24" />
             <Text style={styles.statusText}>Queued</Text>
           </View>
         ) : video.status === "failed" ? (
@@ -147,9 +147,7 @@ function VideoGridItem({ video }: VideoGridItemProps) {
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { videos, loading } = useVideos();
-  console.log("videos - length", videos.length);
-  console.log("loading", loading);
+  const { videos, loading, loadMore, hasMore, loadingMore } = useVideos();
   const { balance } = useBalance();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -165,6 +163,13 @@ export default function DashboardScreen() {
 
   const renderVideoItem = ({ item }: { item: VideoRecord }) => {
     return <VideoGridItem video={item} />;
+  };
+
+  const handleLoadMore = () => {
+    // Only load more if not searching (search filters already loaded videos)
+    if (!searchQuery.trim() && hasMore && !loadingMore && !loading) {
+      loadMore();
+    }
   };
 
   return (
@@ -223,6 +228,18 @@ export default function DashboardScreen() {
           contentContainerStyle={styles.gridContainer}
           columnWrapperStyle={styles.row}
           showsVerticalScrollIndicator={false}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.loadingMoreContainer}>
+                <ActivityIndicator size="small" color={Colors.cyan[500]} />
+                <Text style={styles.loadingMoreText}>
+                  Loading more videos...
+                </Text>
+              </View>
+            ) : null
+          }
         />
       )}
       {/* Sticky Bottom Menu Bar */}
@@ -339,5 +356,16 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: "#1a1a1a",
     textAlign: "center",
+  },
+  loadingMoreContainer: {
+    width: "100%",
+    paddingVertical: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  loadingMoreText: {
+    color: "#888888",
+    fontSize: 14,
   },
 });

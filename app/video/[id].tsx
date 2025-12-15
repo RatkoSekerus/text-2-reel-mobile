@@ -78,15 +78,62 @@ function VideoPlayerItem({ video, isFocused }: VideoPlayerItemProps) {
     };
   }, [player, isFocused, video.status, video.signed_url]);
 
+  useEffect(() => {
+    if (!player) return;
+    if (video.status !== "completed" || !video.signed_url) return;
+
+    if (!isFocused) {
+      // Pause when screen loses focus
+      try {
+        player.pause();
+      } catch {
+        // Ignore pause errors
+      }
+    } else if (hasPlayedRef.current) {
+      // Resume when screen regains focus (only if it was already played before)
+      try {
+        player.play();
+      } catch {
+        // Ignore play errors
+      }
+    }
+  }, [player, isFocused, video.status, video.signed_url]);
+
   if (video.status !== "completed" || !video.signed_url) {
+    // Special-case failed videos: no spinner, show error state
+    if (video.status === "failed") {
+      return (
+        <View style={styles.videoPlaceholder}>
+          <Ionicons name="alert-circle-outline" size={36} color="#F87171" />
+          <Text style={[{ ...styles.placeholderText, color: "#FCA5A5" }]}>
+            {video.error_message || "We couldn’t generate this video."}
+          </Text>
+        </View>
+      );
+    }
+
+    // Queued videos: show informative message and clock icon, no spinner
+    if (video.status === "queued") {
+      return (
+        <View style={styles.videoPlaceholder}>
+          <Ionicons name="time-outline" size={36} color="#FBBF24" />
+          <Text style={styles.placeholderText}>
+            Your video has been queued due to high demand.
+            {"\n"}
+            It will start processing automatically and may take 7–12 minutes to
+            complete once processing begins.
+          </Text>
+        </View>
+      );
+    }
+
+    // Default loading/other non-completed states with spinner
     return (
       <View style={styles.videoPlaceholder}>
         <ActivityIndicator size="large" color={Colors.cyan[500]} />
         <Text style={styles.placeholderText}>
           {video.status === "processing"
-            ? "Processing..."
-            : video.status === "queued"
-            ? "Queued"
+            ? "Processing your video, it usually takes 7-12 minutes..."
             : "Video not available"}
         </Text>
       </View>
@@ -315,30 +362,43 @@ export default function VideoViewerScreen() {
               { top: topPadding + rightIconsOffset, right: 16 },
             ]}
           >
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={handleDownload}
-              disabled={isDownloading || !currentVideo?.signed_url}
-              activeOpacity={0.8}
-            >
-              {isDownloading ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Ionicons name="download-outline" size={24} color="#FFFFFF" />
+            {/* Only show download when the video is actually completed and has a URL */}
+            {currentVideo?.status === "completed" &&
+              currentVideo.signed_url && (
+                <TouchableOpacity
+                  style={styles.iconButton}
+                  onPress={handleDownload}
+                  disabled={isDownloading}
+                  activeOpacity={0.8}
+                >
+                  {isDownloading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Ionicons
+                      name="download-outline"
+                      size={24}
+                      color="#FFFFFF"
+                    />
+                  )}
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={handleDelete}
-              disabled={isDeleting}
-              activeOpacity={0.8}
-            >
-              {isDeleting ? (
-                <ActivityIndicator size="small" color="#F87171" />
-              ) : (
-                <Ionicons name="trash-outline" size={24} color="#F87171" />
-              )}
-            </TouchableOpacity>
+
+            {/* Only allow deleting completed or failed videos (not while queued/processing) */}
+            {(currentVideo?.status === "completed" ||
+              currentVideo?.status === "failed") && (
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={handleDelete}
+                disabled={isDeleting}
+                activeOpacity={0.8}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color="#F87171" />
+                ) : (
+                  <Ionicons name="trash-outline" size={24} color="#F87171" />
+                )}
+              </TouchableOpacity>
+            )}
           </View>
         </Animated.View>
 
@@ -397,11 +457,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#000000",
+    paddingHorizontal: 24,
   },
   placeholderText: {
     color: "#FFFFFF",
     marginTop: 16,
     fontSize: 14,
+    textAlign: "center",
   },
   topOverlay: {
     position: "absolute",
@@ -447,7 +509,7 @@ const styles = StyleSheet.create({
   titleContainer: {
     paddingHorizontal: 16,
     paddingBottom: BOTTOM_MENU_HEIGHT - 25,
-    alignItems: "center",
+    alignItems: "flex-start",
   },
   videoTitle: {
     color: "#FFFFFF",
