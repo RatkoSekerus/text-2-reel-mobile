@@ -148,7 +148,8 @@ function VideoGridItem({ video }: VideoGridItemProps) {
 export default function DashboardScreen() {
   const router = useRouter();
   const { videos, loading } = useVideos();
-  console.log("videos length - dashboard page", videos.length);
+  console.log("videos - length", videos.length);
+  console.log("loading", loading);
   const { balance } = useBalance();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -163,7 +164,6 @@ export default function DashboardScreen() {
   }, [videos, searchQuery]);
 
   const renderVideoItem = ({ item }: { item: VideoRecord }) => {
-    console.log("item", item);
     return <VideoGridItem video={item} />;
   };
 
@@ -196,8 +196,8 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         )}
       </View>
-
       {/* Video Grid */}
+
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.cyan[500]} />
@@ -225,7 +225,6 @@ export default function DashboardScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
-
       {/* Sticky Bottom Menu Bar */}
       <BottomMenu
         balance={balance}

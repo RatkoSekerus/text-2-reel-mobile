@@ -58,9 +58,11 @@ function VideoPlayerItem({ video }: VideoPlayerItemProps) {
 
     // Autoplay once ready when entering full screen
     player.play();
+    console.log("played");
     const timeoutId = setTimeout(() => {
       try {
         player.play();
+        console.log("played again");
       } catch {
         // Ignore playback errors on initial nudge
       }
@@ -106,9 +108,7 @@ function VideoPlayerItem({ video }: VideoPlayerItemProps) {
 export default function VideoViewerScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
-  console.log("params", params);
   const { videos, deleteVideo, loading } = useVideos();
-  console.log("videos - length", videos.length);
   const { balance } = useBalance();
   const insets = useSafeAreaInsets();
   const [uiVisible, setUiVisible] = useState(true);
@@ -234,7 +234,6 @@ export default function VideoViewerScreen() {
   };
 
   if (loading || videos.length === 0) {
-    console.log("loading or videos.length === 0");
     return (
       <LinearGradient
         colors={Colors.background.gradient as [string, string, string]}
