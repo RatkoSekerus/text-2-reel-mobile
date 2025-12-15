@@ -54,7 +54,10 @@ export default function ProfileScreen() {
     try {
       setSigningOut(true);
       await signOut();
-      router.replace("/auth/welcome");
+      // Reset navigation so no authenticated screens (like video viewer)
+      // remain on the stack after logout.
+      // First go to root; the index route will redirect to /auth/welcome.
+      router.replace("/");
     } finally {
       setSigningOut(false);
     }

@@ -18,6 +18,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useIsFocused } from "@react-navigation/native";
 import { VideoView, useVideoPlayer } from "expo-video";
 // Using legacy API to keep downloadAsync working without warnings on SDK 54
 import * as FileSystem from "expo-file-system/legacy";
@@ -36,9 +37,10 @@ const BOTTOM_MENU_HEIGHT = 110;
 
 interface VideoPlayerItemProps {
   video: VideoRecord;
+  isFocused: boolean;
 }
 
-function VideoPlayerItem({ video }: VideoPlayerItemProps) {
+function VideoPlayerItem({ video, isFocused }: VideoPlayerItemProps) {
   const player = useVideoPlayer(
     video.status === "completed" && video.signed_url ? video.signed_url : "",
     (player) => {
@@ -47,32 +49,34 @@ function VideoPlayerItem({ video }: VideoPlayerItemProps) {
     }
   );
 
+  const hasPlayedRef = useRef(false);
+
   useEffect(() => {
-    if (!player) {
-      return;
-    }
+    if (!player) return;
+    if (!isFocused) return;
+    if (hasPlayedRef.current) return;
+    if (video.status !== "completed" || !video.signed_url) return;
 
-    if (video.status !== "completed" || !video.signed_url) {
-      return;
-    }
+    hasPlayedRef.current = true;
 
-    // Autoplay once ready when entering full screen
-    player.play();
-    console.log("played");
+    // Autoplay once when the screen first gains focus
+    try {
+      player.play();
+    } catch {
+      // Ignore initial playback errors (e.g. if player not ready yet)
+    }
     const timeoutId = setTimeout(() => {
       try {
         player.play();
-        console.log("played again");
       } catch {
-        // Ignore playback errors on initial nudge
+        // Ignore secondary nudge errors
       }
     }, 50);
 
     return () => {
       clearTimeout(timeoutId);
-      // Rely on unmounting VideoView to stop playback; avoid pause() errors
     };
-  }, [player, video.status, video.signed_url]);
+  }, [player, isFocused, video.status, video.signed_url]);
 
   if (video.status !== "completed" || !video.signed_url) {
     return (
@@ -108,6 +112,7 @@ function VideoPlayerItem({ video }: VideoPlayerItemProps) {
 export default function VideoViewerScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
+  const isFocused = useIsFocused();
   const { videos, deleteVideo, loading } = useVideos();
   const { balance } = useBalance();
   const insets = useSafeAreaInsets();
@@ -275,7 +280,7 @@ export default function VideoViewerScreen() {
         onPress={handleScreenPress}
       >
         {/* Single full-screen video */}
-        <VideoPlayerItem video={currentVideo} />
+        <VideoPlayerItem video={currentVideo} isFocused={!!isFocused} />
 
         {/* Top UI Overlay */}
         {/* Always-visible Back Button */}
