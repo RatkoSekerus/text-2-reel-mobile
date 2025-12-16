@@ -79,36 +79,13 @@ export default function WelcomeScreen() {
             disabled={loading}
             activeOpacity={0.8}
           >
-            <View style={styles.googleIconContainer}>
-              <View style={styles.googleLogo}>
-                <View style={styles.googleLogoInner}>
-                  <View
-                    style={[
-                      styles.googleColorBlock,
-                      { backgroundColor: "#EA4335", top: 0, left: 0 },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.googleColorBlock,
-                      { backgroundColor: "#4285F4", top: 0, right: 0 },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.googleColorBlock,
-                      { backgroundColor: "#FBBC05", bottom: 0, left: 0 },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.googleColorBlock,
-                      { backgroundColor: "#34A853", bottom: 0, right: 0 },
-                    ]}
-                  />
-                </View>
-              </View>
-            </View>
+            <Image
+              source={{
+                uri: "https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg",
+              }}
+              style={styles.googleIcon}
+              contentFit="contain"
+            />
             <Text style={styles.googleButtonText}>Continue with Google</Text>
           </TouchableOpacity>
 
@@ -194,29 +171,10 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  googleIconContainer: {
-    width: 24,
-    height: 24,
-    marginRight: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  googleLogo: {
+  googleIcon: {
     width: 20,
     height: 20,
-    borderRadius: 10,
-    overflow: "hidden",
-    backgroundColor: "#FFFFFF",
-  },
-  googleLogoInner: {
-    width: "100%",
-    height: "100%",
-    position: "relative",
-  },
-  googleColorBlock: {
-    position: "absolute",
-    width: "50%",
-    height: "50%",
+    marginRight: 12,
   },
   googleButtonText: {
     fontSize: 16,
