@@ -72,9 +72,10 @@ export function CreateVideoModal({ visible, onClose }: CreateVideoModalProps) {
 
     // Check if user has any queued videos
     const hasQueuedVideos = videos.some((v) => v.status === "queued");
-    if (hasQueuedVideos) {
+    const hasProcessingVideos = videos.some((v) => v.status === "processing");
+    if (hasQueuedVideos || hasProcessingVideos) {
       setError(
-        "You have a video queued for processing. Please wait for it to start processing and finish before creating a new video."
+        "You have a video queued or processing. Please wait for it to start processing and finish before creating a new video."
       );
       setLoading(false);
       return;

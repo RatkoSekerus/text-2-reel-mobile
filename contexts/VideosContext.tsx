@@ -531,6 +531,12 @@ export function VideosProvider({ children }: { children: ReactNode }) {
       throw error;
     }
     setVideos((prev) => prev.filter((v) => v.id !== videoId));
+
+    // Adjust offset to account for deleted video
+    offsetRef.current = Math.max(0, offsetRef.current - 1);
+
+    // Reset hasMore to true so user can load more if needed
+    setHasMore(true);
   }, []);
 
   const deleteMultipleVideos = useCallback(async (videoIds: string[]) => {
@@ -539,6 +545,12 @@ export function VideosProvider({ children }: { children: ReactNode }) {
       throw error;
     }
     setVideos((prev) => prev.filter((v) => !videoIds.includes(v.id)));
+
+    // Adjust offset to account for deleted videos
+    offsetRef.current = Math.max(0, offsetRef.current - videoIds.length);
+
+    // Reset hasMore to true so user can load more if needed
+    setHasMore(true);
   }, []);
 
   const value: VideosContextValue = {
