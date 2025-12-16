@@ -36,12 +36,18 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const AUTO_HIDE_DELAY = 3000; // 3 seconds
 const BOTTOM_MENU_HEIGHT = 110;
 
+// Track if any video has been loaded in this session
+let hasLoadedAnyVideo = false;
+
 interface VideoPlayerItemProps {
   video: VideoRecord;
   isFocused: boolean;
 }
 
 function VideoPlayerItem({ video, isFocused }: VideoPlayerItemProps) {
+  const [isBuffering, setIsBuffering] = useState(true);
+  const [isFirstLoad] = useState(!hasLoadedAnyVideo);
+
   const player = useVideoPlayer(
     video.status === "completed" && video.signed_url ? video.signed_url : "",
     (player) => {
@@ -51,6 +57,23 @@ function VideoPlayerItem({ video, isFocused }: VideoPlayerItemProps) {
   );
 
   const hasPlayedRef = useRef(false);
+
+  // Monitor when video is ready to play
+  useEffect(() => {
+    if (!player) return;
+    if (video.status !== "completed" || !video.signed_url) return;
+
+    // Check if video has loaded (duration > 0 means video metadata is loaded)
+    const checkLoaded = setInterval(() => {
+      if (player.duration > 0 && player.status !== "loading") {
+        setIsBuffering(false);
+        hasLoadedAnyVideo = true; // Mark that we've loaded a video
+        clearInterval(checkLoaded);
+      }
+    }, 100);
+
+    return () => clearInterval(checkLoaded);
+  }, [player, video.status, video.signed_url]);
 
   useEffect(() => {
     if (!player) return;
@@ -144,14 +167,34 @@ function VideoPlayerItem({ video, isFocused }: VideoPlayerItemProps) {
   return (
     <View style={styles.videoContainer}>
       {player && (
-        <VideoView
-          player={player}
-          style={styles.video}
-          contentFit="cover"
-          nativeControls={false}
-          fullscreenOptions={{ enable: false }}
-          allowsPictureInPicture={false}
-        />
+        <>
+          <VideoView
+            player={player}
+            style={styles.video}
+            contentFit="cover"
+            nativeControls={false}
+            fullscreenOptions={{ enable: false }}
+            allowsPictureInPicture={false}
+          />
+          {isBuffering && (
+            <View style={styles.bufferingOverlay}>
+              <ActivityIndicator size="large" color={Colors.cyan[500]} />
+              <Text style={[styles.bufferingText, { marginTop: 16 }]}>
+                Loading video...
+              </Text>
+              {isFirstLoad && (
+                <Text
+                  style={[
+                    styles.bufferingText,
+                    { fontSize: 14, color: "#999999", marginTop: 8 },
+                  ]}
+                >
+                  Initial load may take a few minutes, please wait
+                </Text>
+              )}
+            </View>
+          )}
+        </>
       )}
     </View>
   );
@@ -525,5 +568,21 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0, 0, 0, 0.75)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  bufferingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 100,
+  },
+  bufferingText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "500",
   },
 });

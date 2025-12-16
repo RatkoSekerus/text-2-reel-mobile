@@ -179,30 +179,6 @@ export default function DashboardScreen() {
       colors={Colors.background.gradient as [string, string, string]}
       style={styles.container}
     >
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Ionicons
-          name="search-outline"
-          size={20}
-          color="#888888"
-          style={styles.searchIcon}
-        />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search videos..."
-          placeholderTextColor="#888888"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity
-            onPress={() => setSearchQuery("")}
-            style={styles.clearButton}
-          >
-            <Ionicons name="close-circle" size={20} color="#888888" />
-          </TouchableOpacity>
-        )}
-      </View>
       {/* Video Grid */}
 
       {loading ? (
@@ -244,6 +220,30 @@ export default function DashboardScreen() {
           }
         />
       )}
+      {/* Search Bar - Overlay on top of videos */}
+      <View style={styles.searchContainer}>
+        <Ionicons
+          name="search-outline"
+          size={20}
+          color="#888888"
+          style={styles.searchIcon}
+        />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search videos..."
+          placeholderTextColor="#888888"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity
+            onPress={() => setSearchQuery("")}
+            style={styles.clearButton}
+          >
+            <Ionicons name="close-circle" size={20} color="#888888" />
+          </TouchableOpacity>
+        )}
+      </View>
       {/* Sticky Bottom Menu Bar */}
       <BottomMenu
         balance={balance}
@@ -265,17 +265,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   searchContainer: {
+    position: "absolute",
+    top: 60,
+    left: 16,
+    right: 16,
+    zIndex: 10,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#2a2a2a",
-    marginHorizontal: 16,
-    marginTop: 50,
-    marginBottom: 8,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderWidth: 1,
     borderColor: "#3a3a3a",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   searchIcon: {
     marginRight: 8,
@@ -312,6 +319,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   gridContainer: {
+    paddingTop: 0,
     paddingBottom: 100, // Space for bottom menu
   },
   row: {

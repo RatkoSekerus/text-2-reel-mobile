@@ -17,8 +17,8 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <VideosProvider>
-        <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-          <Stack screenOptions={{ headerShown: false }}>
+      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+        <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen
             name="auth/welcome"
@@ -94,9 +94,9 @@ export default function RootLayout() {
               fullScreenGestureEnabled: true,
             }}
           />
-          </Stack>
-          <StatusBar style="light" />
-        </ThemeProvider>
+        </Stack>
+        <StatusBar style="light" />
+      </ThemeProvider>
       </VideosProvider>
     </AuthProvider>
   );
