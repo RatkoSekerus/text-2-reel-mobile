@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,10 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
@@ -19,8 +23,15 @@ import { useVideos } from "../hooks/useVideos";
 import { BottomMenu } from "@/components/BottomMenu";
 import { useRouter } from "expo-router";
 import { Colors } from "@/constants/colors";
-import { VideoRecord, SIGNED_URL_EXPIRES } from "@/constants/constants";
+import {
+  VideoRecord,
+  SIGNED_URL_EXPIRES,
+  PRICE_PER_VIDEO,
+} from "@/constants/constants";
 import { downloadVideo } from "@/utils/videoDownload";
+import { useAuthContext } from "../contexts/AuthContext";
+import { supabase } from "../lib/supabase";
+import Constants from "expo-constants";
 
 function getStatusColor(status: string): string {
   switch (status) {
@@ -242,6 +253,7 @@ function VideoItem({
 export default function DashboardScreen() {
   const router = useRouter();
   const { balance } = useBalance();
+  const { user, session } = useAuthContext();
   const {
     videos,
     loading,
@@ -256,6 +268,26 @@ export default function DashboardScreen() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [videoToDelete, setVideoToDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showCreateInput, setShowCreateInput] = useState(false);
+  const [prompt, setPrompt] = useState("");
+  const [creatingVideo, setCreatingVideo] = useState(false);
+
+  // Hide input field when keyboard is dismissed
+  useEffect(() => {
+    if (!showCreateInput) return;
+
+    const keyboardDidHideListener = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => {
+        setPrompt("");
+        setShowCreateInput(false);
+      }
+    );
+
+    return () => {
+      keyboardDidHideListener.remove();
+    };
+  }, [showCreateInput, prompt]);
 
   // Filter videos based on search query
   const filteredVideos = useMemo(() => {
@@ -312,11 +344,132 @@ export default function DashboardScreen() {
     setVideoToDelete(null);
   };
 
+  const handleCreateVideo = async () => {
+    if (!prompt.trim()) {
+      return;
+    }
+
+    // Check if user has any queued videos
+    const hasQueuedVideos = videos.some(
+      (v) => v.status === "queued" || v.status === "processing"
+    );
+    if (hasQueuedVideos) {
+      Alert.alert(
+        "No concurrent executions",
+        "You have a video queued or processing. Please wait for it to finish before creating a new video."
+      );
+      return;
+    }
+
+    if (balance === null || balance < PRICE_PER_VIDEO) {
+      Alert.alert(
+        "Insufficient Balance",
+        `You need at least $${PRICE_PER_VIDEO} to generate a video.`
+      );
+      return;
+    }
+
+    if (!user || !session) {
+      Alert.alert("Error", "User not authenticated");
+      return;
+    }
+
+    setCreatingVideo(true);
+
+    try {
+      // Refresh session to ensure we have a fresh token
+      const {
+        data: { session: refreshedSession },
+        error: refreshError,
+      } = await supabase.auth.refreshSession();
+
+      if (refreshError || !refreshedSession) {
+        console.error("Error refreshing session:", refreshError);
+        Alert.alert(
+          "Error",
+          "Failed to refresh authentication. Please try again."
+        );
+        setCreatingVideo(false);
+        return;
+      }
+
+      // Get Supabase URL
+      const supabaseUrl =
+        Constants.expoConfig?.extra?.supabaseUrl ||
+        process.env.EXPO_PUBLIC_SUPABASE_URL ||
+        "";
+
+      if (!supabaseUrl) {
+        throw new Error("Supabase URL not configured");
+      }
+
+      // Call edge function to create video
+      const edgeFunctionUrl = `${supabaseUrl.replace(
+        /^https?:\/\//,
+        "https://"
+      )}/functions/v1/create-video`;
+
+      const createVideoResponse = await fetch(edgeFunctionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${refreshedSession.access_token}`,
+        },
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          refresh_token: refreshedSession.refresh_token,
+        }),
+      });
+
+      if (!createVideoResponse.ok) {
+        const errorData = await createVideoResponse.json().catch(() => ({
+          error: "Unknown error occurred",
+        }));
+        console.error("Error creating video:", errorData);
+        throw new Error(errorData.error || "Failed to create video");
+      }
+
+      const result = await createVideoResponse.json();
+
+      if (!result.ok) {
+        throw new Error(result.error || "Failed to create video");
+      }
+
+      // Success
+      Alert.alert(
+        "Success",
+        "Video generation started! Your video will appear below when ready."
+      );
+      setPrompt("");
+      setShowCreateInput(false);
+    } catch (err) {
+      console.error("Error generating video:", err);
+      Alert.alert(
+        "Error",
+        err instanceof Error ? err.message : "Failed to generate video"
+      );
+    } finally {
+      setCreatingVideo(false);
+    }
+  };
+
+  const handleDismissInput = () => {
+    Keyboard.dismiss();
+    if (!prompt.trim()) {
+      setShowCreateInput(false);
+    }
+  };
+
   return (
     <LinearGradient
       colors={Colors.background.gradient as [string, string, string]}
       style={styles.container}
     >
+      {showCreateInput && (
+        <TouchableWithoutFeedback onPress={handleDismissInput}>
+          <View style={styles.backdrop} />
+        </TouchableWithoutFeedback>
+      )}
       <View style={styles.content}>
         {/* Search Bar */}
         <View style={styles.searchContainer}>
@@ -392,11 +545,53 @@ export default function DashboardScreen() {
         )}
       </View>
 
+      {/* Create Video Input - Above Keyboard */}
+      {showCreateInput && (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.keyboardAvoidingView}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        >
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View style={styles.createInputContainer}>
+              <TextInput
+                style={styles.createInput}
+                placeholder="Describe the video you want to create..."
+                placeholderTextColor={Colors.text.gray[500]}
+                value={prompt}
+                onChangeText={setPrompt}
+                multiline
+                autoFocus
+                editable={!creatingVideo}
+              />
+              {prompt.trim().length > 0 && (
+                <TouchableOpacity
+                  onPress={handleCreateVideo}
+                  disabled={creatingVideo}
+                  style={styles.sendButton}
+                  activeOpacity={0.7}
+                >
+                  {creatingVideo ? (
+                    <ActivityIndicator size="small" color={Colors.cyan[500]} />
+                  ) : (
+                    <Ionicons
+                      name="arrow-up"
+                      size={20}
+                      color={Colors.cyan[500]}
+                    />
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      )}
+
       <BottomMenu
         balance={balance}
         onPressBilling={() => router.push("/profile/billing")}
         onPressProfile={() => router.push("/profile")}
-        onPressAdd={() => {}}
+        onPressAdd={() => setShowCreateInput(true)}
       />
 
       {/* Download Progress Modal */}
@@ -471,6 +666,56 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingBottom: 100, // Space for bottom menu
+  },
+  backdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999,
+  },
+  keyboardAvoidingView: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+  },
+  createInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "transparent",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    paddingBottom: Platform.OS === "ios" ? 18 : 10,
+  },
+  createInput: {
+    flex: 1,
+    backgroundColor: "rgba(60, 60, 60, 0.8)",
+    color: "#FFFFFF",
+    fontSize: 16,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginRight: 8,
+    minHeight: 44,
+    maxHeight: 100,
+  },
+  sendButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 4,
   },
   searchContainer: {
     flexDirection: "row",
