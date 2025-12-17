@@ -9,14 +9,12 @@ import "react-native-reanimated";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { AuthProvider } from "@/contexts/AuthContext";
-import { VideosProvider } from "@/contexts/VideosContext";
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   return (
     <AuthProvider>
-      <VideosProvider>
       <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
@@ -89,7 +87,7 @@ export default function RootLayout() {
           <Stack.Screen
             name="video/[id]"
             options={{
-              headerShown: false,
+              headerBackButtonMenuEnabled: false,
               gestureEnabled: true,
               fullScreenGestureEnabled: true,
             }}
@@ -97,7 +95,6 @@ export default function RootLayout() {
         </Stack>
         <StatusBar style="light" />
       </ThemeProvider>
-      </VideosProvider>
     </AuthProvider>
   );
 }

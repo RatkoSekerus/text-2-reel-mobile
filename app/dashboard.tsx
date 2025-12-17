@@ -3,175 +3,313 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   FlatList,
-  TouchableOpacity,
   ActivityIndicator,
-  Dimensions,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  Modal,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
-import { VideoView, useVideoPlayer } from "expo-video";
-import { useRouter, type Href } from "expo-router";
-import { Colors } from "../constants/colors";
-import { useVideos } from "../hooks/useVideos";
-import type { VideoRecord } from "../constants/constants";
+
 import { useBalance } from "../hooks/useBalance";
+import { useVideos } from "../hooks/useVideos";
 import { BottomMenu } from "@/components/BottomMenu";
-import { CreateVideoModal } from "@/components/CreateVideoModal";
+import { useRouter } from "expo-router";
+import { Colors } from "@/constants/colors";
+import { VideoRecord, SIGNED_URL_EXPIRES } from "@/constants/constants";
+import { downloadVideo } from "@/utils/videoDownload";
 
-const { width } = Dimensions.get("window");
-const NUM_COLUMNS = 2;
-const VIDEO_WIDTH = width / NUM_COLUMNS;
-
-interface VideoGridItemProps {
-  video: VideoRecord;
+function getStatusColor(status: string): string {
+  switch (status) {
+    case "completed":
+      return "#06b6d4";
+    case "processing":
+      return "#06b6d4"; // cyan
+    case "queued":
+      return "#fbbf24"; // yellow
+    case "failed":
+      return "#f87171"; // red
+    default:
+      return Colors.text.gray[400];
+  }
 }
 
-function VideoGridItem({ video }: VideoGridItemProps) {
+function getStatusLabel(status: string): string {
+  switch (status) {
+    case "completed":
+      return "Completed";
+    case "processing":
+      return "Processing";
+    case "queued":
+      return "Queued";
+    case "failed":
+      return "Failed";
+    default:
+      return status.charAt(0).toUpperCase() + status.slice(1);
+  }
+}
+
+type VideoItemProps = {
+  video: VideoRecord;
+  onDownloadStart: () => void;
+  onDownloadEnd: () => void;
+  onDelete: (videoId: string) => void;
+  onRefreshSignedUrl: (videoId: string) => Promise<string>;
+};
+
+function VideoItem({
+  video,
+  onDownloadStart,
+  onDownloadEnd,
+  onDelete,
+  onRefreshSignedUrl,
+}: VideoItemProps) {
   const router = useRouter();
-  const player = useVideoPlayer(
-    video.status === "completed" && video.signed_url ? video.signed_url : "",
-    (player) => {
-      // Configure player for thumbnail display
-      player.loop = false;
-      player.muted = true;
+  const statusColor = getStatusColor(video.status);
+  const statusLabel = getStatusLabel(video.status);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (downloading) return;
+
+    try {
+      setDownloading(true);
+
+      // Check if URL needs refresh (within 15 minutes of expiring)
+      let urlToUse = video.signed_url;
+      const REFRESH_THRESHOLD = 15 * 60 * 1000; // 15 minutes in milliseconds
+
+      if (video.signed_url_created_at) {
+        const ageMs = Date.now() - video.signed_url_created_at;
+        const expiresAtMs = SIGNED_URL_EXPIRES * 1000;
+        const timeUntilExpiry = expiresAtMs - ageMs;
+
+        if (timeUntilExpiry < REFRESH_THRESHOLD) {
+          console.log("[DEBUG] Signed URL expiring soon, refreshing...", {
+            timeUntilExpiryMinutes: Math.round(timeUntilExpiry / 60000),
+            videoId: video.id,
+          });
+          try {
+            urlToUse = await onRefreshSignedUrl(video.id);
+            console.log("[DEBUG] Signed URL refreshed successfully");
+          } catch (refreshError) {
+            console.error(
+              "[DEBUG] Failed to refresh signed URL, using existing:",
+              refreshError
+            );
+            // Continue with existing URL if refresh fails
+            if (!urlToUse) {
+              throw new Error("Failed to refresh video URL");
+            }
+          }
+        }
+      }
+
+      if (!urlToUse) {
+        Alert.alert("Error", "Video URL is not available");
+        return;
+      }
+
+      const downloadStartTime = Date.now();
+      onDownloadStart();
+      await downloadVideo(urlToUse, `video-${video.id}.mp4`);
+      const downloadEndTime = Date.now();
+      console.log("[DEBUG] Download completed in handleDownload", {
+        totalDuration: downloadEndTime - downloadStartTime,
+        timestamp: Date.now(),
+      });
+      onDownloadEnd();
+    } catch (error) {
+      console.error("Error downloading video:", error);
+      onDownloadEnd();
+      Alert.alert(
+        "Download Failed",
+        error instanceof Error
+          ? error.message
+          : "Failed to download video. Please try again."
+      );
+    } finally {
+      setDownloading(false);
     }
-  );
+  };
 
-  // Seek to 100ms to get a visible frame (frame 0 might be black) and pause
-  React.useEffect(() => {
-    if (!player || video.status !== "completed" || !video.signed_url) {
-      return;
-    }
+  const canDownload = video.status === "completed" && video.signed_url;
+  const canDelete = video.status === "completed" || video.status === "failed";
+  const canViewError = video.status === "failed";
+  const canViewStatus =
+    video.status === "queued" || video.status === "processing";
 
-    let hasSeeked = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const handleDelete = () => {
+    onDelete(video.id);
+  };
 
-    const setupThumbnail = () => {
-      try {
-        // Wait for video to be ready before seeking
-        const checkAndSeek = () => {
-          if (!player) {
-            return;
-          }
+  const handleViewError = () => {
+    router.push({
+      pathname: "/video/[id]",
+      params: {
+        id: video.id,
+        status: video.status,
+        errorMessage: video.error_message || "Unknown error",
+      },
+    });
+  };
 
-          if (player.duration > 0 && !hasSeeked) {
-            hasSeeked = true;
-            // Seek to 100ms to get a visible frame
-            player.currentTime = 0.1;
-            player.pause();
-          } else if (!hasSeeked) {
-            // Retry after a short delay if duration not available yet
-            timeoutId = setTimeout(checkAndSeek, 100);
-          }
-        };
-
-        // Start checking immediately
-        checkAndSeek();
-
-        // Also try after a longer delay as fallback
-        const fallbackTimeout = setTimeout(() => {
-          if (player && !hasSeeked) {
-            hasSeeked = true;
-            try {
-              player.currentTime = 0.1;
-              player.pause();
-            } catch {}
-          }
-        }, 1000);
-
-        return () => {
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-          }
-          clearTimeout(fallbackTimeout);
-        };
-      } catch {}
-    };
-
-    return setupThumbnail();
-  }, [player, video.id, video.status, video.signed_url]);
-
-  const handlePress = () => {
-    router.push(`/video/${video.id}` as any);
+  const handleViewStatus = () => {
+    router.push({
+      pathname: "/video/[id]",
+      params: {
+        id: video.id,
+        status: video.status,
+      },
+    });
   };
 
   return (
-    <TouchableOpacity
-      style={styles.videoItem}
-      onPress={handlePress}
-      activeOpacity={0.9}
-    >
-      <View style={styles.videoContainer}>
-        {video.status === "completed" && video.signed_url && player ? (
-          <View style={styles.videoWrapper}>
-            <VideoView
-              player={player}
-              style={styles.videoThumbnail}
-              contentFit="cover"
-              nativeControls={false}
-              fullscreenOptions={{ enable: false }}
-              allowsPictureInPicture={false}
+    <View style={styles.videoItem}>
+      <View style={styles.videoContent}>
+        <Text style={styles.videoPrompt} numberOfLines={2}>
+          {video.prompt}
+        </Text>
+        <View style={styles.statusContainer}>
+          <View
+            style={[
+              styles.statusDot,
+              {
+                backgroundColor: statusColor,
+              },
+            ]}
+          />
+          <Text
+            style={[
+              styles.statusText,
+              {
+                color: statusColor,
+              },
+            ]}
+          >
+            {statusLabel}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.actionContainer}>
+        {canDownload && (
+          <TouchableOpacity
+            onPress={handleDownload}
+            disabled={downloading}
+            style={styles.iconButton}
+            activeOpacity={0.7}
+          >
+            {downloading ? (
+              <ActivityIndicator size="small" color={Colors.cyan[500]} />
+            ) : (
+              <Ionicons
+                name="download-outline"
+                size={20}
+                color={Colors.cyan[500]}
+              />
+            )}
+          </TouchableOpacity>
+        )}
+        {canDelete && (
+          <TouchableOpacity
+            onPress={handleDelete}
+            style={styles.iconButton}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="trash-outline" size={20} color="#f87171" />
+          </TouchableOpacity>
+        )}
+        {(canViewError || canViewStatus) && (
+          <TouchableOpacity
+            onPress={canViewError ? handleViewError : handleViewStatus}
+            style={styles.iconButton}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={Colors.text.gray[400]}
             />
-            <View style={styles.playButtonOverlay}>
-              <Ionicons name="play-circle" size={40} color="#FFFFFF" />
-            </View>
-          </View>
-        ) : video.status === "processing" ? (
-          <View style={styles.videoPlaceholder}>
-            <ActivityIndicator size="small" color={Colors.cyan[500]} />
-            <Text style={styles.statusText}>Processing...</Text>
-          </View>
-        ) : video.status === "queued" ? (
-          <View style={styles.videoPlaceholder}>
-            <Ionicons name="time-outline" size={24} color="#FBBF24" />
-            <Text style={styles.statusText}>Queued</Text>
-          </View>
-        ) : video.status === "failed" ? (
-          <View style={styles.videoPlaceholder}>
-            <Ionicons name="alert-circle-outline" size={24} color="#FF4444" />
-            <Text style={styles.statusText}>Failed</Text>
-          </View>
-        ) : (
-          <View style={styles.videoPlaceholder}>
-            <ActivityIndicator size="small" color={Colors.cyan[500]} />
-          </View>
+          </TouchableOpacity>
         )}
       </View>
-      <Text style={styles.videoTitle} numberOfLines={2}>
-        {video.prompt || "Untitled Video"}
-      </Text>
-    </TouchableOpacity>
+    </View>
   );
 }
-
 export default function DashboardScreen() {
   const router = useRouter();
-  const { videos, loading, loadMore, hasMore, loadingMore } = useVideos();
   const { balance } = useBalance();
+  const {
+    videos,
+    loading,
+    loadingMore,
+    hasMore,
+    loadMore,
+    deleteVideo,
+    refreshVideoSignedUrl,
+  } = useVideos();
   const [searchQuery, setSearchQuery] = useState("");
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [videoToDelete, setVideoToDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
+  // Filter videos based on search query
   const filteredVideos = useMemo(() => {
-    const filtered = !searchQuery.trim()
-      ? videos
-      : videos.filter((video) =>
-          video.prompt?.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-
-    return filtered;
+    if (!searchQuery.trim()) {
+      return videos;
+    }
+    const query = searchQuery.toLowerCase().trim();
+    return videos.filter((video) => video.prompt.toLowerCase().includes(query));
   }, [videos, searchQuery]);
 
-  const renderVideoItem = ({ item }: { item: VideoRecord }) => {
-    return <VideoGridItem video={item} />;
-  };
-
-  const handleLoadMore = () => {
-    // Only load more if not searching (search filters already loaded videos)
-    if (!searchQuery.trim() && hasMore && !loadingMore && !loading) {
+  const handleEndReached = () => {
+    if (hasMore && !loadingMore && !loading && !searchQuery.trim()) {
       loadMore();
     }
+  };
+
+  const renderFooter = () => {
+    if (!loadingMore) return null;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="small" color={Colors.cyan[500]} />
+      </View>
+    );
+  };
+
+  const handleDeleteClick = (videoId: string) => {
+    setVideoToDelete(videoId);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!videoToDelete) return;
+
+    try {
+      setDeleting(true);
+      await deleteVideo(videoToDelete);
+      setShowDeleteModal(false);
+      setVideoToDelete(null);
+    } catch (error) {
+      console.error("Error deleting video:", error);
+      Alert.alert(
+        "Delete Failed",
+        error instanceof Error
+          ? error.message
+          : "Failed to delete video. Please try again."
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteModal(false);
+    setVideoToDelete(null);
   };
 
   return (
@@ -179,83 +317,147 @@ export default function DashboardScreen() {
       colors={Colors.background.gradient as [string, string, string]}
       style={styles.container}
     >
-      {/* Video Grid */}
+      <View style={styles.content}>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons
+            name="search-outline"
+            size={20}
+            color={Colors.text.gray[400]}
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search videos..."
+            placeholderTextColor={Colors.text.gray[500]}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearchQuery("")}
+              style={styles.clearButton}
+            >
+              <Ionicons
+                name="close-circle"
+                size={20}
+                color={Colors.text.gray[400]}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
 
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.cyan[500]} />
-        </View>
-      ) : filteredVideos.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="videocam-off-outline" size={64} color="#666666" />
-          <Text style={styles.emptyText}>
-            {searchQuery ? "No videos found" : "No videos yet"}
-          </Text>
-          <Text style={styles.emptySubtext}>
-            {searchQuery
-              ? "Try a different search term"
-              : "Create your first video to get started"}
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredVideos}
-          renderItem={renderVideoItem}
-          keyExtractor={(item) => item.id}
-          numColumns={NUM_COLUMNS}
-          contentContainerStyle={styles.gridContainer}
-          columnWrapperStyle={styles.row}
-          showsVerticalScrollIndicator={false}
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={
-            loadingMore ? (
-              <View style={styles.loadingMoreContainer}>
-                <ActivityIndicator size="small" color={Colors.cyan[500]} />
-                <Text style={styles.loadingMoreText}>
-                  Loading more videos...
-                </Text>
-              </View>
-            ) : null
-          }
-        />
-      )}
-      {/* Search Bar - Overlay on top of videos */}
-      <View style={styles.searchContainer}>
-        <Ionicons
-          name="search-outline"
-          size={20}
-          color="#888888"
-          style={styles.searchIcon}
-        />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search videos..."
-          placeholderTextColor="#888888"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity
-            onPress={() => setSearchQuery("")}
-            style={styles.clearButton}
-          >
-            <Ionicons name="close-circle" size={20} color="#888888" />
-          </TouchableOpacity>
+        {loading && filteredVideos.length === 0 ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.cyan[500]} />
+          </View>
+        ) : filteredVideos.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons
+              name="videocam-outline"
+              size={48}
+              color={Colors.text.gray[500]}
+            />
+            <Text style={styles.emptyText}>
+              {searchQuery.trim() ? "No videos found" : "No videos yet"}
+            </Text>
+            <Text style={styles.emptySubtext}>
+              {searchQuery.trim()
+                ? "Try a different search term"
+                : "Create your first video to get started"}
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredVideos}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <VideoItem
+                video={item}
+                onDownloadStart={() => setShowDownloadModal(true)}
+                onDownloadEnd={() => setShowDownloadModal(false)}
+                onDelete={handleDeleteClick}
+                onRefreshSignedUrl={refreshVideoSignedUrl}
+              />
+            )}
+            ItemSeparatorComponent={() => <View style={styles.divider} />}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            onEndReached={handleEndReached}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={renderFooter}
+          />
         )}
       </View>
-      {/* Sticky Bottom Menu Bar */}
+
       <BottomMenu
         balance={balance}
         onPressBilling={() => router.push("/profile/billing")}
-        onPressProfile={() => router.push("/profile" as Href)}
-        onPressAdd={() => setShowCreateModal(true)}
+        onPressProfile={() => router.push("/profile")}
+        onPressAdd={() => {}}
       />
-      {/* Create Video Modal */}
-      <CreateVideoModal
-        visible={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-      />
+
+      {/* Download Progress Modal */}
+      <Modal
+        visible={showDownloadModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
+        <BlurView intensity={20} style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ActivityIndicator size="large" color={Colors.cyan[500]} />
+            <Text style={styles.modalTitle}>Downloading Video</Text>
+            <Text style={styles.modalMessage}>
+              This may take a few minutes depending on your connection speed.
+            </Text>
+            <Text style={styles.modalSubtext}>
+              Please keep the app open while downloading...
+            </Text>
+          </View>
+        </BlurView>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={showDeleteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleDeleteCancel}
+      >
+        <BlurView intensity={20} style={styles.modalOverlay}>
+          <View style={styles.deleteModalContent}>
+            <Ionicons name="trash-outline" size={48} color="#f87171" />
+            <Text style={styles.deleteModalTitle}>Delete Video?</Text>
+            <Text style={styles.deleteModalMessage}>
+              This action cannot be undone. The video will be permanently
+              deleted from your account.
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                onPress={handleDeleteCancel}
+                style={[styles.deleteModalButton, styles.cancelButton]}
+                disabled={deleting}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleDeleteConfirm}
+                style={[styles.deleteModalButton, styles.confirmButton]}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.confirmButtonText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </BlurView>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -263,26 +465,23 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingTop: 60,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingBottom: 100, // Space for bottom menu
   },
   searchContainer: {
-    position: "absolute",
-    top: 60,
-    left: 16,
-    right: 16,
-    zIndex: 10,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#2a2a2a",
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
     borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
     borderWidth: 1,
-    borderColor: "#3a3a3a",
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    paddingHorizontal: 12,
+    marginBottom: 20,
+    minHeight: 48,
   },
   searchIcon: {
     marginRight: 8,
@@ -291,9 +490,15 @@ const styles = StyleSheet.create({
     flex: 1,
     color: "#FFFFFF",
     fontSize: 16,
+    paddingVertical: 12,
   },
   clearButton: {
-    marginLeft: 8,
+    padding: 4,
+    marginLeft: 4,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: "center",
   },
   loadingContainer: {
     flex: 1,
@@ -304,83 +509,160 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 32,
+    paddingVertical: 60,
   },
   emptyText: {
+    color: Colors.text.gray[400],
     fontSize: 18,
     fontWeight: "600",
-    color: "#FFFFFF",
     marginTop: 16,
-    marginBottom: 8,
   },
   emptySubtext: {
+    color: Colors.text.gray[500],
     fontSize: 14,
-    color: "#888888",
+    marginTop: 8,
     textAlign: "center",
   },
-  gridContainer: {
-    paddingTop: 0,
-    paddingBottom: 100, // Space for bottom menu
-  },
-  row: {
-    justifyContent: "flex-start",
+  listContent: {
+    paddingBottom: 16,
   },
   videoItem: {
-    width: VIDEO_WIDTH,
-    aspectRatio: 9 / 16, // Vertical video aspect ratio
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: "rgba(0, 0, 0, 0.2)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
   },
-  videoContainer: {
+  videoContent: {
     flex: 1,
-    backgroundColor: "#2a2a2a",
-    justifyContent: "center",
+    marginRight: 12,
+  },
+  actionContainer: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 12,
   },
-  videoWrapper: {
-    width: "100%",
-    height: "100%",
-    position: "relative",
+  iconButton: {
+    padding: 4,
   },
-  videoThumbnail: {
-    width: "100%",
-    height: "100%",
+  videoPrompt: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 8,
   },
-  playButtonOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: "center",
+  statusContainer: {
+    flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    gap: 6,
   },
-  videoPlaceholder: {
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   statusText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 14,
+    fontWeight: "500",
   },
-  videoTitle: {
+  divider: {
+    height: 12,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+  },
+  modalContent: {
+    backgroundColor: "rgba(30, 30, 30, 0.95)",
+    borderRadius: 20,
+    padding: 32,
+    alignItems: "center",
+    maxWidth: 320,
+    width: "85%",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  modalTitle: {
     color: "#FFFFFF",
-    fontSize: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    backgroundColor: "#1a1a1a",
+    fontSize: 20,
+    fontWeight: "700",
+    marginTop: 20,
+    marginBottom: 12,
     textAlign: "center",
   },
-  loadingMoreContainer: {
+  modalMessage: {
+    color: Colors.text.gray[300],
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  modalSubtext: {
+    color: Colors.text.gray[400],
+    fontSize: 13,
+    textAlign: "center",
+    fontStyle: "italic",
+  },
+  deleteModalContent: {
+    backgroundColor: "rgba(30, 30, 30, 0.95)",
+    borderRadius: 20,
+    padding: 32,
+    alignItems: "center",
+    maxWidth: 320,
+    width: "85%",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  deleteModalTitle: {
+    color: "#FFFFFF",
+    fontSize: 20,
+    fontWeight: "700",
+    marginTop: 20,
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  deleteModalMessage: {
+    color: Colors.text.gray[300],
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  deleteModalActions: {
+    flexDirection: "row",
+    gap: 12,
     width: "100%",
-    paddingVertical: 20,
+  },
+  deleteModalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
   },
-  loadingMoreText: {
-    color: "#888888",
-    fontSize: 14,
+  cancelButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  confirmButton: {
+    backgroundColor: "#f87171",
+  },
+  cancelButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  confirmButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
   },
 });

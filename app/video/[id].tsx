@@ -1,484 +1,89 @@
-import React, {
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-  useMemo,
-} from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Dimensions,
-  Animated,
-  ActivityIndicator,
-  Alert,
-} from "react-native";
+import React from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { useIsFocused } from "@react-navigation/native";
-import { VideoView, useVideoPlayer } from "expo-video";
-// Using legacy API to keep downloadAsync working without warnings on SDK 54
-import * as FileSystem from "expo-file-system/legacy";
-import * as Sharing from "expo-sharing";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Colors } from "@/constants/colors";
-import { BottomMenu } from "@/components/BottomMenu";
-import { CreateVideoModal } from "@/components/CreateVideoModal";
-import { useVideos } from "@/hooks/useVideos";
-import { useBalance } from "@/hooks/useBalance";
-import type { VideoRecord } from "@/constants/constants";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
-const AUTO_HIDE_DELAY = 3000; // 3 seconds
-const BOTTOM_MENU_HEIGHT = 110;
-
-// Track if any video has been loaded in this session
-let hasLoadedAnyVideo = false;
-
-interface VideoPlayerItemProps {
-  video: VideoRecord;
-  isFocused: boolean;
-}
-
-function VideoPlayerItem({ video, isFocused }: VideoPlayerItemProps) {
-  const [isBuffering, setIsBuffering] = useState(true);
-  const [isFirstLoad] = useState(!hasLoadedAnyVideo);
-
-  const player = useVideoPlayer(
-    video.status === "completed" && video.signed_url ? video.signed_url : "",
-    (player) => {
-      player.loop = true;
-      player.muted = false;
-    }
-  );
-
-  const hasPlayedRef = useRef(false);
-
-  // Monitor when video is ready to play
-  useEffect(() => {
-    if (!player) return;
-    if (video.status !== "completed" || !video.signed_url) return;
-
-    // Check if video has loaded (duration > 0 means video metadata is loaded)
-    const checkLoaded = setInterval(() => {
-      if (player.duration > 0 && player.status !== "loading") {
-        setIsBuffering(false);
-        hasLoadedAnyVideo = true; // Mark that we've loaded a video
-        clearInterval(checkLoaded);
-      }
-    }, 100);
-
-    return () => clearInterval(checkLoaded);
-  }, [player, video.status, video.signed_url]);
-
-  useEffect(() => {
-    if (!player) return;
-    if (!isFocused) return;
-    if (hasPlayedRef.current) return;
-    if (video.status !== "completed" || !video.signed_url) return;
-
-    hasPlayedRef.current = true;
-
-    // Autoplay once when the screen first gains focus
-    try {
-      player.play();
-    } catch {
-      // Ignore initial playback errors (e.g. if player not ready yet)
-    }
-    const timeoutId = setTimeout(() => {
-      try {
-        player.play();
-      } catch {
-        // Ignore secondary nudge errors
-      }
-    }, 50);
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [player, isFocused, video.status, video.signed_url]);
-
-  useEffect(() => {
-    if (!player) return;
-    if (video.status !== "completed" || !video.signed_url) return;
-
-    if (!isFocused) {
-      // Pause when screen loses focus
-      try {
-        player.pause();
-      } catch {
-        // Ignore pause errors
-      }
-    } else if (hasPlayedRef.current) {
-      // Resume when screen regains focus (only if it was already played before)
-      try {
-        player.play();
-      } catch {
-        // Ignore play errors
-      }
-    }
-  }, [player, isFocused, video.status, video.signed_url]);
-
-  if (video.status !== "completed" || !video.signed_url) {
-    // Special-case failed videos: no spinner, show error state
-    if (video.status === "failed") {
-      return (
-        <View style={styles.videoPlaceholder}>
-          <Ionicons name="alert-circle-outline" size={36} color="#F87171" />
-          <Text style={[{ ...styles.placeholderText, color: "#FCA5A5" }]}>
-            {video.error_message || "We couldn’t generate this video."}
-          </Text>
-        </View>
-      );
-    }
-
-    // Queued videos: show informative message and clock icon, no spinner
-    if (video.status === "queued") {
-      return (
-        <View style={styles.videoPlaceholder}>
-          <Ionicons name="time-outline" size={36} color="#FBBF24" />
-          <Text style={styles.placeholderText}>
-            Your video has been queued due to high demand.
-            {"\n"}
-            It will start processing automatically and may take 7–12 minutes to
-            complete once processing begins.
-          </Text>
-        </View>
-      );
-    }
-
-    // Default loading/other non-completed states with spinner
-    return (
-      <View style={styles.videoPlaceholder}>
-        <ActivityIndicator size="large" color={Colors.cyan[500]} />
-        <Text style={styles.placeholderText}>
-          {video.status === "processing"
-            ? "Processing your video, it usually takes 7-12 minutes..."
-            : "Video not available"}
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.videoContainer}>
-      {player && (
-        <>
-          <VideoView
-            player={player}
-            style={styles.video}
-            contentFit="cover"
-            nativeControls={false}
-            fullscreenOptions={{ enable: false }}
-            allowsPictureInPicture={false}
-          />
-          {isBuffering && (
-            <View style={styles.bufferingOverlay}>
-              <ActivityIndicator size="large" color={Colors.cyan[500]} />
-              <Text style={[styles.bufferingText, { marginTop: 16 }]}>
-                Loading video...
-              </Text>
-              {isFirstLoad && (
-                <Text
-                  style={[
-                    styles.bufferingText,
-                    { fontSize: 14, color: "#999999", marginTop: 8 },
-                  ]}
-                >
-                  Initial load may take a few minutes, please wait
-                </Text>
-              )}
-            </View>
-          )}
-        </>
-      )}
-    </View>
-  );
-}
-
-export default function VideoViewerScreen() {
+export default function VideoStatusScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string }>();
-  const isFocused = useIsFocused();
-  const { videos, deleteVideo, loading } = useVideos();
-  const { balance } = useBalance();
-  const insets = useSafeAreaInsets();
-  const [uiVisible, setUiVisible] = useState(true);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const params = useLocalSearchParams();
+  const status = params.status as string | undefined;
+  const errorMessage = params.errorMessage as string | undefined;
 
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const currentVideo = useMemo(
-    () => videos.find((v) => v.id === params.id) || null,
-    [videos, params.id]
-  );
-
-  const hideUI = useCallback(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      setUiVisible(false);
-    });
-  }, [fadeAnim]);
-
-  const resetHideTimeout = useCallback(() => {
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-    }
-    hideTimeoutRef.current = setTimeout(() => {
-      hideUI();
-    }, AUTO_HIDE_DELAY);
-  }, [hideUI]);
-
-  const showUI = useCallback(() => {
-    setUiVisible(true);
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-    resetHideTimeout();
-  }, [fadeAnim, resetHideTimeout]);
-
-  useEffect(() => {
-    if (uiVisible) {
-      resetHideTimeout();
-    }
-    return () => {
-      if (hideTimeoutRef.current) {
-        clearTimeout(hideTimeoutRef.current);
-      }
-    };
-  }, [uiVisible, resetHideTimeout]);
-
-  const handleScreenPress = () => {
-    if (uiVisible) {
-      hideUI();
+  const getStatusContent = () => {
+    if (status === "failed") {
+      return {
+        icon: "alert-circle",
+        iconColor: "#f87171",
+        title: "Video Generation Failed",
+        message: errorMessage || "An error occurred while generating your video. Please try creating a new video.",
+        headerTitle: "Video Error",
+      };
+    } else if (status === "queued") {
+      return {
+        icon: "time-outline",
+        iconColor: "#fbbf24",
+        title: "Video Queued",
+        message: "Your video has been queued due to high demand. It will start processing automatically and take 7-12 minutes to complete once processing begins.",
+        headerTitle: "Video Status",
+      };
+    } else if (status === "processing") {
+      return {
+        icon: "hourglass-outline",
+        iconColor: "#06b6d4",
+        title: "Processing Video",
+        message: "Processing your video, it usually takes 7-12 minutes...",
+        headerTitle: "Video Status",
+      };
     } else {
-      showUI();
+      return {
+        icon: "information-circle-outline",
+        iconColor: Colors.text.gray[400],
+        title: "Video Status",
+        message: "Unknown video status.",
+        headerTitle: "Video Status",
+      };
     }
   };
 
-  const handleDelete = async () => {
-    if (!currentVideo) return;
-
-    Alert.alert(
-      "Delete Video",
-      "Are you sure you want to delete this video? This action cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            setIsDeleting(true);
-            try {
-              await deleteVideo(currentVideo.id);
-              // After deleting, just go back to the grid
-              router.back();
-            } catch {
-              Alert.alert("Error", "Failed to delete video. Please try again.");
-            } finally {
-              setIsDeleting(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleDownload = async () => {
-    if (!currentVideo?.signed_url) {
-      Alert.alert("Error", "Video URL not available for download.");
-      return;
-    }
-
-    setIsDownloading(true);
-    try {
-      // Use a temporary file path
-      const cacheDir = (FileSystem as any).cacheDirectory || "";
-      const fileUri = `${cacheDir}${currentVideo.id}.mp4`;
-      const downloadResult = await FileSystem.downloadAsync(
-        currentVideo.signed_url,
-        fileUri
-      );
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(downloadResult.uri, {
-          mimeType: "video/mp4",
-          dialogTitle: "Share Video",
-        });
-      } else {
-        Alert.alert(
-          "Download Complete",
-          `Video saved to: ${downloadResult.uri}`,
-          [{ text: "OK" }]
-        );
-      }
-    } catch {
-      Alert.alert("Error", "Failed to download video. Please try again.");
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  if (loading || videos.length === 0) {
-    return (
-      <LinearGradient
-        colors={Colors.background.gradient as [string, string, string]}
-        style={styles.container}
-      >
-        <View style={styles.videoPlaceholder}>
-          <ActivityIndicator size="large" color={Colors.cyan[500]} />
-          <Text style={styles.placeholderText}>Loading videos...</Text>
-        </View>
-      </LinearGradient>
-    );
-  }
-
-  if (!currentVideo) {
-    return (
-      <LinearGradient
-        colors={Colors.background.gradient as [string, string, string]}
-        style={styles.container}
-      >
-        <View style={styles.videoPlaceholder}>
-          <Text style={styles.placeholderText}>Video not found.</Text>
-        </View>
-      </LinearGradient>
-    );
-  }
-
-  const topPadding = insets.top; // safe-area only, no extra black spacer
-  const backButtonOffset = Math.max(4, insets.top * 0.05);
-  const rightIconsOffset = Math.max(8, insets.top * 0.1);
+  const statusContent = getStatusContent();
+  const isProcessing = status === "processing";
 
   return (
     <LinearGradient
       colors={Colors.background.gradient as [string, string, string]}
       style={styles.container}
     >
-      <TouchableOpacity
-        style={styles.screenTouchable}
-        activeOpacity={1}
-        onPress={handleScreenPress}
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{statusContent.headerTitle}</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      {/* Content */}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Single full-screen video */}
-        <VideoPlayerItem video={currentVideo} isFocused={!!isFocused} />
-
-        {/* Top UI Overlay */}
-        {/* Always-visible Back Button */}
-        <View
-          style={[
-            styles.backButtonContainer,
-            { top: topPadding + backButtonOffset, left: 16, zIndex: 20 },
-          ]}
-        >
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="chevron-back" size={28} color="#FFFFFF" />
-          </TouchableOpacity>
+        <View style={styles.statusContainer}>
+          {isProcessing ? (
+            <ActivityIndicator size="large" color={statusContent.iconColor} />
+          ) : (
+            <Ionicons name={statusContent.icon as any} size={64} color={statusContent.iconColor} />
+          )}
+          <Text style={styles.statusTitle}>{statusContent.title}</Text>
+          <Text style={styles.statusMessage}>{statusContent.message}</Text>
         </View>
-
-        <Animated.View
-          style={[
-            styles.topOverlay,
-            {
-              opacity: fadeAnim,
-              pointerEvents: uiVisible ? "auto" : "none",
-            },
-          ]}
-        >
-          {/* Right Icons - absolute top-right */}
-          <View
-            style={[
-              styles.rightIconsContainer,
-              { top: topPadding + rightIconsOffset, right: 16 },
-            ]}
-          >
-            {/* Only show download when the video is actually completed and has a URL */}
-            {currentVideo?.status === "completed" &&
-              currentVideo.signed_url && (
-                <TouchableOpacity
-                  style={styles.iconButton}
-                  onPress={handleDownload}
-                  disabled={isDownloading}
-                  activeOpacity={0.8}
-                >
-                  {isDownloading ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Ionicons
-                      name="download-outline"
-                      size={24}
-                      color="#FFFFFF"
-                    />
-                  )}
-                </TouchableOpacity>
-              )}
-
-            {/* Only allow deleting completed or failed videos (not while queued/processing) */}
-            {(currentVideo?.status === "completed" ||
-              currentVideo?.status === "failed") && (
-              <TouchableOpacity
-                style={styles.iconButton}
-                onPress={handleDelete}
-                disabled={isDeleting}
-                activeOpacity={0.8}
-              >
-                {isDeleting ? (
-                  <ActivityIndicator size="small" color="#F87171" />
-                ) : (
-                  <Ionicons name="trash-outline" size={24} color="#F87171" />
-                )}
-              </TouchableOpacity>
-            )}
-          </View>
-        </Animated.View>
-
-        {/* Bottom UI Overlay */}
-        <View style={styles.bottomOverlay}>
-          {/* Video Title */}
-          <Animated.View
-            style={{
-              opacity: fadeAnim,
-              pointerEvents: uiVisible ? "auto" : "none",
-            }}
-          >
-            {currentVideo && (
-              <View style={styles.titleContainer}>
-                <Text style={styles.videoTitle} numberOfLines={2}>
-                  {currentVideo.prompt || "Untitled Video"}
-                </Text>
-              </View>
-            )}
-          </Animated.View>
-
-          {/* Bottom Menu Bar (same as dashboard) - Always visible */}
-          <BottomMenu
-            balance={balance}
-            onPressBilling={() => router.push("/profile/billing")}
-            onPressProfile={() => router.push("/profile" as any)}
-            onPressAdd={() => setShowCreateModal(true)}
-          />
-        </View>
-      </TouchableOpacity>
-      {/* Create Video Modal */}
-      <CreateVideoModal
-        visible={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-      />
+      </ScrollView>
     </LinearGradient>
   );
 }
@@ -486,103 +91,55 @@ export default function VideoViewerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingTop: 60,
   },
-  screenTouchable: {
-    flex: 1,
-  },
-  videoContainer: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    backgroundColor: "#000000",
-    justifyContent: "center",
+  header: {
+    flexDirection: "row",
     alignItems: "center",
-  },
-  video: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-  },
-  videoPlaceholder: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#000000",
-    paddingHorizontal: 24,
-  },
-  placeholderText: {
-    color: "#FFFFFF",
-    marginTop: 16,
-    fontSize: 14,
-    textAlign: "center",
-  },
-  topOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-  },
-  backButtonContainer: {
-    position: "absolute",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 20,
   },
   backButton: {
     width: 44,
     height: 44,
-    justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-    borderRadius: 22,
+    justifyContent: "center",
   },
-  rightIconsContainer: {
-    position: "absolute",
-    flexDirection: "column",
-    gap: 12,
+  headerTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "700",
   },
-  iconButton: {
+  headerSpacer: {
     width: 44,
-    height: 44,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-    borderRadius: 22,
   },
-  bottomOverlay: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-  },
-  flatListContent: {
-    paddingBottom: BOTTOM_MENU_HEIGHT,
-  },
-  titleContainer: {
+  content: {
+    flexGrow: 1,
     paddingHorizontal: 16,
-    paddingBottom: BOTTOM_MENU_HEIGHT - 25,
-    alignItems: "flex-start",
+    paddingBottom: 40,
   },
-  videoTitle: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
-    textShadowColor: "rgba(0, 0, 0, 0.75)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  bufferingOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    backgroundColor: "rgba(0, 0, 0, 0.85)",
-    justifyContent: "center",
+  statusContainer: {
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    borderRadius: 16,
+    padding: 32,
     alignItems: "center",
-    zIndex: 100,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
   },
-  bufferingText: {
+  statusTitle: {
     color: "#FFFFFF",
+    fontSize: 24,
+    fontWeight: "700",
+    marginTop: 24,
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  statusMessage: {
+    color: Colors.text.gray[300],
     fontSize: 16,
-    fontWeight: "500",
+    lineHeight: 24,
+    textAlign: "center",
   },
 });

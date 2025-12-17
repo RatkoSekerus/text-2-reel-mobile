@@ -14,6 +14,7 @@ export interface VideoRecord {
   bucket_path: string | null;
   signed_url: string | null;
   signed_url_loading?: boolean;
+  signed_url_created_at?: number; // Timestamp in milliseconds when signed URL was generated
   duration: number | null;
   created_at: string;
   completed_at: string | null;
