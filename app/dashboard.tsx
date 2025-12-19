@@ -393,10 +393,10 @@ export default function DashboardScreen() {
         return;
       }
 
-      // Get Supabase URL
+      // Get Supabase URL from environment variables first
       const supabaseUrl =
-        Constants.expoConfig?.extra?.supabaseUrl ||
         process.env.EXPO_PUBLIC_SUPABASE_URL ||
+        Constants.expoConfig?.extra?.supabaseUrl ||
         "";
 
       if (!supabaseUrl) {

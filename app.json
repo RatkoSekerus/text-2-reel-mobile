@@ -1,22 +1,36 @@
 {
   "expo": {
     "name": "Text2reel",
-    "slug": "Text2reel",
-    "version": "1.0.0",
+    "slug": "text2reel",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/text-to-reel-icon.png",
     "scheme": "text2reel",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.text2reel.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to save videos.",
+        "NSPhotoLibraryAddUsageDescription": "This app needs access to save videos to your photo library.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.text2reel.app",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#18202B",
         "foregroundImage": "./assets/images/text-to-reel-icon.png"
       },
-      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE",
+        "INTERNET"
+      ],
+      "edgeToEdgeEnabled": false,
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -44,8 +58,16 @@
       "reactCompiler": true
     },
     "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "cabfa54f-a90e-4b4e-b71f-a35af46d9b60"
+      },
       "supabaseUrl": "https://eujqfscakbmdvzgyvqzg.supabase.co",
-      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1anFmc2Nha2JtZHZ6Z3l2cXpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk2ODAyMzksImV4cCI6MjA3NTI1NjIzOX0.Z_7lfwo4CqVCDeeGfPf7Wc5P_mWh-mX-SwZ6Bk2NnRA"
-    }
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1anFmc2Nha2JtZHZ6Z3l2cXpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk2ODAyMzksImV4cCI6MjA3NTI1NjIzOX0.Z_7lfwo4CqVCDeeGfPf7Wc5P_mWh-mX-SwZ6Bk2NnRA",
+      "googleOAuthClientIdWeb": "73271504251-6e8rf3fcjemdbt121f6t0fqhc6kupggg.apps.googleusercontent.com",
+      "googleOAuthClientIdAndroid": "73271504251-bvnmqpc4soqdmc38amhbrof7fj6ral5s.apps.googleusercontent.com",
+      "googleOAuthClientIdIOS": "73271504251-7531c5co1iba2dfsjoafu9o2hfl4gl5p.apps.googleusercontent.com"
+    },
+    "owner": "text2reel"
   }
 }

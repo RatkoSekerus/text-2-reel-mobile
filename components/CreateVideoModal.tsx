@@ -108,10 +108,10 @@ export function CreateVideoModal({ visible, onClose }: CreateVideoModalProps) {
         return;
       }
 
-      // Get Supabase URL from environment or config
+      // Get Supabase URL from environment variables first
       const supabaseUrl =
-        Constants.expoConfig?.extra?.supabaseUrl ||
         process.env.EXPO_PUBLIC_SUPABASE_URL ||
+        Constants.expoConfig?.extra?.supabaseUrl ||
         "";
 
       if (!supabaseUrl) {

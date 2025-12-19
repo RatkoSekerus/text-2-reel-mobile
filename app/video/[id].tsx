@@ -1,5 +1,12 @@
 import React from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -18,7 +25,9 @@ export default function VideoStatusScreen() {
         icon: "alert-circle",
         iconColor: "#f87171",
         title: "Video Generation Failed",
-        message: errorMessage || "An error occurred while generating your video. Please try creating a new video.",
+        message:
+          errorMessage ||
+          "An error occurred while generating your video. Please try creating a new video.",
         headerTitle: "Video Error",
       };
     } else if (status === "queued") {
@@ -26,7 +35,8 @@ export default function VideoStatusScreen() {
         icon: "time-outline",
         iconColor: "#fbbf24",
         title: "Video Queued",
-        message: "Your video has been queued due to high demand. It will start processing automatically and take 7-12 minutes to complete once processing begins.",
+        message:
+          "Your video has been queued due to high demand. It will start processing automatically and take 7-12 minutes to complete once processing begins.",
         headerTitle: "Video Status",
       };
     } else if (status === "processing") {
@@ -78,7 +88,11 @@ export default function VideoStatusScreen() {
           {isProcessing ? (
             <ActivityIndicator size="large" color={statusContent.iconColor} />
           ) : (
-            <Ionicons name={statusContent.icon as any} size={64} color={statusContent.iconColor} />
+            <Ionicons
+              name={statusContent.icon as any}
+              size={64}
+              color={statusContent.iconColor}
+            />
           )}
           <Text style={styles.statusTitle}>{statusContent.title}</Text>
           <Text style={styles.statusMessage}>{statusContent.message}</Text>

@@ -53,6 +53,9 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen name="auth/verification-pending" />
+          <Stack.Screen name="auth/confirm" />
+          <Stack.Screen name="auth/reset-password" />
+          <Stack.Screen name="auth/callback" />
           <Stack.Screen
             name="dashboard"
             options={{

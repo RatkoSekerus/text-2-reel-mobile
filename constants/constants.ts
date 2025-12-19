@@ -39,10 +39,10 @@ export const getSignedUrlAndDownload = async function getSignedUrlAndDownload({
   const { data: sessionData } = await supabase.auth.getSession();
   const accessToken = sessionData?.session?.access_token;
 
-  // Get Supabase URL from environment or config
+  // Get Supabase URL from environment variables first
   const supabaseUrl =
-    Constants.expoConfig?.extra?.supabaseUrl ||
     process.env.EXPO_PUBLIC_SUPABASE_URL ||
+    Constants.expoConfig?.extra?.supabaseUrl ||
     "";
 
   if (!supabaseUrl) {

@@ -1,9 +1,17 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  Platform,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import * as WebBrowser from "expo-web-browser";
+import Constants from "expo-constants";
 import { supabase } from "../../lib/supabase";
 import { Colors } from "../../constants/colors";
 import GlowText from "../../components/GlowText";
@@ -18,10 +26,23 @@ export default function WelcomeScreen() {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      // Create redirect URI for deep linking
+      // IMPORTANT: Always use the production scheme (text2reel://)
+      // Custom URL schemes only work in production builds, not in Expo Go
+      // For development testing, you need to build the app or use a development build
+      const redirectUrl = "text2reel://auth/callback";
+
+      console.log("Using redirect URL:", redirectUrl);
+      console.log("Platform:", Platform.OS);
+      console.log("App scheme:", Constants.expoConfig?.scheme);
+
+      // Use Supabase's built-in OAuth flow which handles PKCE correctly
+      // Supabase uses authorization code flow with PKCE, which Google accepts
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: undefined, // Mobile apps handle this differently
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: false,
         },
       });
 
@@ -31,9 +52,118 @@ export default function WelcomeScreen() {
         return;
       }
 
-      // OAuth will open in browser, navigation will be handled by auth state change
-    } catch {
-      Alert.alert("Error", "An error occurred during Google sign-in");
+      // If we get a URL, open it in the browser
+      if (data?.url) {
+        console.log("Opening OAuth URL:", data.url);
+        console.log("Expected redirect URL:", redirectUrl);
+
+        const result = await WebBrowser.openAuthSessionAsync(
+          data.url,
+          redirectUrl
+        );
+
+        console.log(
+          "OAuth result:",
+          result.type,
+          "url" in result ? result.url : "no url"
+        );
+
+        if (result.type === "success" && "url" in result && result.url) {
+          const resultUrl = result.url;
+          // Check if the result URL is our deep link
+          if (
+            resultUrl.startsWith("text2reel://") ||
+            resultUrl.startsWith("com.text2reel.app://")
+          ) {
+            // The deep link was triggered, the callback handler will process it
+            console.log("Deep link received, callback handler will process");
+            // Don't set loading to false yet - let the callback handler manage navigation
+            return;
+          } else {
+            // If we get a different URL, try to extract tokens and set session
+            console.log(
+              "Received URL that is not deep link, attempting to parse:",
+              resultUrl
+            );
+
+            // Parse tokens from the URL
+            const url = resultUrl;
+            const hashIndex = url.indexOf("#");
+            const queryIndex = url.indexOf("?");
+
+            let accessToken: string | null = null;
+            let refreshToken: string | null = null;
+
+            if (hashIndex !== -1) {
+              const hash = url.substring(hashIndex + 1);
+              const params = hash.split("&");
+              params.forEach((param) => {
+                const [key, value] = param.split("=");
+                if (key === "access_token")
+                  accessToken = decodeURIComponent(value);
+                if (key === "refresh_token")
+                  refreshToken = decodeURIComponent(value);
+              });
+            } else if (queryIndex !== -1) {
+              const query = url.substring(queryIndex + 1).split("#")[0];
+              const params = query.split("&");
+              params.forEach((param) => {
+                const [key, value] = param.split("=");
+                if (key === "access_token")
+                  accessToken = decodeURIComponent(value);
+                if (key === "refresh_token")
+                  refreshToken = decodeURIComponent(value);
+              });
+            }
+
+            if (accessToken && refreshToken) {
+              const { error: sessionError } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+
+              if (sessionError) {
+                Alert.alert("Error", sessionError.message);
+                setLoading(false);
+                return;
+              }
+
+              // Success - navigation will be handled by auth state change
+              setLoading(false);
+            } else {
+              // Wait and check for session
+              setTimeout(async () => {
+                const {
+                  data: { session },
+                  error: sessionError,
+                } = await supabase.auth.getSession();
+                if (sessionError || !session) {
+                  Alert.alert(
+                    "Error",
+                    "Failed to establish session. Please try again."
+                  );
+                  setLoading(false);
+                  return;
+                }
+                setLoading(false);
+              }, 1500);
+            }
+          }
+        } else if (result.type === "cancel") {
+          setLoading(false);
+        } else {
+          Alert.alert("Error", "Google sign-in was cancelled or failed");
+          setLoading(false);
+        }
+      } else {
+        Alert.alert("Error", "Failed to initiate Google sign-in");
+        setLoading(false);
+      }
+    } catch (error: any) {
+      Alert.alert(
+        "Error",
+        error.message || "An error occurred during Google sign-in"
+      );
       setLoading(false);
     }
   };

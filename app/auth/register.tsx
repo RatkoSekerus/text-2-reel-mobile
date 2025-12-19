@@ -1,20 +1,27 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../../lib/supabase';
-import Input from '../../components/ui/Input';
-import { Colors } from '../../constants/colors';
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
+import Constants from "expo-constants";
+import { supabase } from "../../lib/supabase";
+import Input from "../../components/ui/Input";
+import { Colors } from "../../constants/colors";
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const passwordMeetsRequirements = (value: string) => {
     if (!value) return false;
@@ -23,38 +30,46 @@ export default function RegisterScreen() {
     return minLength && hasSpecialChar;
   };
 
-  const passwordError = password && !passwordMeetsRequirements(password)
-    ? 'Password must be at least 10 characters and include a special character'
-    : undefined;
+  const passwordError =
+    password && !passwordMeetsRequirements(password)
+      ? "Password must be at least 10 characters and include a special character"
+      : undefined;
 
   const confirmPasswordError =
     confirmPassword && passwordMeetsRequirements(password)
       ? password !== confirmPassword
-        ? 'Passwords do not match'
+        ? "Passwords do not match"
         : undefined
       : undefined;
 
   const handleSubmit = async () => {
-    setError('');
+    setError("");
 
     if (!passwordMeetsRequirements(password)) {
-      setError('Password must be at least 10 characters long and include at least one special character');
+      setError(
+        "Password must be at least 10 characters long and include at least one special character"
+      );
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError("Passwords do not match");
       return;
     }
 
     setLoading(true);
 
     try {
+      // Configure redirect URL for email confirmation
+      const redirectUrl = `${
+        Constants.expoConfig?.scheme || "text2reel"
+      }://auth/confirm`;
+
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo: undefined, // Mobile apps handle this differently
+          emailRedirectTo: redirectUrl,
         },
       });
 
@@ -65,16 +80,20 @@ export default function RegisterScreen() {
       }
 
       // Check if user already exists
-      if (data.user && data.user.identities && data.user.identities.length === 0) {
-        setError('This email is already registered. Please sign in instead.');
+      if (
+        data.user &&
+        data.user.identities &&
+        data.user.identities.length === 0
+      ) {
+        setError("This email is already registered. Please sign in instead.");
         setLoading(false);
         return;
       }
 
       // Navigate to verification pending or dashboard
-      router.replace('/auth/verification-pending');
+      router.replace("/auth/verification-pending");
     } catch {
-      setError('An error occurred during registration');
+      setError("An error occurred during registration");
     } finally {
       setLoading(false);
     }
@@ -92,7 +111,7 @@ export default function RegisterScreen() {
         {/* Back Button */}
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.replace('/auth/welcome')}
+          onPress={() => router.replace("/auth/welcome")}
         >
           <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -144,20 +163,23 @@ export default function RegisterScreen() {
           />
 
           <TouchableOpacity
-            style={[styles.createAccountButton, loading && styles.buttonDisabled]}
+            style={[
+              styles.createAccountButton,
+              loading && styles.buttonDisabled,
+            ]}
             onPress={handleSubmit}
             disabled={loading || !!passwordError || !!confirmPasswordError}
             activeOpacity={0.8}
           >
             <Text style={styles.createAccountButtonText}>
-              {loading ? 'Creating Account...' : 'Create Account'}
+              {loading ? "Creating Account..." : "Create Account"}
             </Text>
           </TouchableOpacity>
 
           <View style={styles.signInContainer}>
             <Text style={styles.signInText}>Already have an account?</Text>
             <TouchableOpacity
-              onPress={() => router.push('/auth/login')}
+              onPress={() => router.push("/auth/login")}
               activeOpacity={0.8}
             >
               <Text style={styles.signInLink}>Sign In</Text>
@@ -180,13 +202,13 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   backButton: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     marginBottom: 30,
     padding: 8,
   },
   logoContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 40,
   },
   logoImage: {
@@ -195,24 +217,24 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     flex: 1,
-    width: '100%',
+    width: "100%",
   },
   errorContainer: {
-    backgroundColor: 'rgba(255, 68, 68, 0.2)',
+    backgroundColor: "rgba(255, 68, 68, 0.2)",
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
   },
   errorText: {
-    color: '#FF4444',
+    color: "#FF4444",
     fontSize: 14,
   },
   createAccountButton: {
     backgroundColor: Colors.cyan[500],
     borderRadius: 12,
     paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: 8,
     shadowColor: Colors.cyan[500],
     shadowOffset: { width: 0, height: 4 },
@@ -225,24 +247,23 @@ const styles = StyleSheet.create({
   },
   createAccountButtonText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   signInContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     marginTop: 24,
     gap: 8,
   },
   signInText: {
     fontSize: 14,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   signInLink: {
     fontSize: 14,
     color: Colors.cyan[500],
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });
-
