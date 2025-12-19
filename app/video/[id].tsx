@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   View,
   Text,
@@ -12,12 +12,26 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 
 import { Colors } from "@/constants/colors";
+import { useVideos } from "@/hooks/useVideos";
 
 export default function VideoStatusScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const status = params.status as string | undefined;
-  const errorMessage = params.errorMessage as string | undefined;
+  const videoId = params.id as string | undefined;
+  const { videos } = useVideos();
+
+  // Get the current video from context, or fallback to params if not found
+  const video = useMemo(() => {
+    if (videoId && videos.length > 0) {
+      return videos.find((v) => v.id === videoId);
+    }
+    return null;
+  }, [videoId, videos]);
+
+  // Use video from context if available, otherwise fallback to params
+  const status = video?.status || (params.status as string | undefined);
+  const errorMessage =
+    video?.error_message || (params.errorMessage as string | undefined);
 
   const getStatusContent = () => {
     if (status === "failed") {
@@ -47,19 +61,28 @@ export default function VideoStatusScreen() {
         message: "Processing your video, it usually takes 7-12 minutes...",
         headerTitle: "Video Status",
       };
+    } else if (status === "completed") {
+      return {
+        icon: "checkmark-circle",
+        iconColor: "#06b6d4",
+        title: "Video Completed",
+        message:
+          "Your video has been successfully generated! You can download it from the dashboard.",
+        headerTitle: "Video Status",
+      };
     } else {
       return {
         icon: "information-circle-outline",
         iconColor: Colors.text.gray[400],
         title: "Video Status",
-        message: "Unknown video status.",
+        message: status ? `Video status: ${status}` : "Loading video status...",
         headerTitle: "Video Status",
       };
     }
   };
 
   const statusContent = getStatusContent();
-  const isProcessing = status === "processing";
+  const isProcessing = status === "processing" || status === "queued";
 
   return (
     <LinearGradient

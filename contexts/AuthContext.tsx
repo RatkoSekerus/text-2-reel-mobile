@@ -1,7 +1,13 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from "react";
+import { User, Session } from "@supabase/supabase-js";
+import { supabase } from "../lib/supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface AuthContextType {
   user: User | null;
@@ -22,28 +28,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Get initial session with error handling
     const initializeAuth = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
         if (error) {
           // If there's an error (like invalid refresh token), clear the session
-          console.warn('Session error:', error.message);
-          
+          console.warn("Session error:", error.message);
+
           // Clear potentially corrupted auth data from AsyncStorage
-          if (error.message?.includes('Refresh Token') || error.message?.includes('Invalid')) {
+          if (
+            error.message?.includes("Refresh Token") ||
+            error.message?.includes("Invalid")
+          ) {
             try {
               // Clear Supabase auth storage
               const keys = await AsyncStorage.getAllKeys();
-              const authKeys = keys.filter(key => 
-                key.includes('supabase') || key.includes('auth')
+              const authKeys = keys.filter(
+                (key) => key.includes("supabase") || key.includes("auth")
               );
               if (authKeys.length > 0) {
                 await AsyncStorage.multiRemove(authKeys);
               }
             } catch (clearError) {
-              console.warn('Error clearing storage:', clearError);
+              console.warn("Error clearing storage:", clearError);
             }
           }
-          
+
           // Set session to null and continue
           setSession(null);
           setUser(null);
@@ -52,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(session?.user ?? null);
         }
       } catch (err) {
-        console.error('Error initializing auth:', err);
+        console.error("Error initializing auth:", err);
         setSession(null);
         setUser(null);
       } finally {
@@ -79,14 +91,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await supabase.auth.signOut();
       // Clear any remaining auth data
       const keys = await AsyncStorage.getAllKeys();
-      const authKeys = keys.filter(key => 
-        key.includes('supabase') || key.includes('auth')
+      const authKeys = keys.filter(
+        (key) => key.includes("supabase") || key.includes("auth")
       );
       if (authKeys.length > 0) {
         await AsyncStorage.multiRemove(authKeys);
       }
     } catch (error) {
-      console.error('Error signing out:', error);
+      console.error("Error signing out:", error);
     }
   };
 
@@ -108,16 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuthContext() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuthContext must be used within an AuthProvider');
+    throw new Error("useAuthContext must be used within an AuthProvider");
   }
   return context;
 }
-
-
-
-
-
-
-
-
-
