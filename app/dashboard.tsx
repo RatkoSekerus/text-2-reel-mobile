@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -13,13 +13,17 @@ import {
   Platform,
   Keyboard,
   TouchableWithoutFeedback,
+  ScrollView,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
+import { AudioModule, setAudioModeAsync } from "expo-audio";
+import type { AudioPlayer } from "expo-audio";
 
 import { useBalance } from "../hooks/useBalance";
 import { useVideos } from "../hooks/useVideos";
+import { useVoicesList } from "../hooks/useVoicesList";
 import { BottomMenu } from "@/components/BottomMenu";
 import { useRouter } from "expo-router";
 import { Colors } from "@/constants/colors";
@@ -32,6 +36,9 @@ import { downloadVideo } from "@/utils/videoDownload";
 import { useAuthContext } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 import Constants from "expo-constants";
+
+// Constants
+const REQUEST_TIMEOUT_MS = 30000; // 30 seconds
 
 function getStatusColor(status: string): string {
   switch (status) {
@@ -99,18 +106,9 @@ function VideoItem({
         const timeUntilExpiry = expiresAtMs - ageMs;
 
         if (timeUntilExpiry < REFRESH_THRESHOLD) {
-          console.log("[DEBUG] Signed URL expiring soon, refreshing...", {
-            timeUntilExpiryMinutes: Math.round(timeUntilExpiry / 60000),
-            videoId: video.id,
-          });
           try {
             urlToUse = await onRefreshSignedUrl(video.id);
-            console.log("[DEBUG] Signed URL refreshed successfully");
           } catch (refreshError) {
-            console.error(
-              "[DEBUG] Failed to refresh signed URL, using existing:",
-              refreshError
-            );
             // Continue with existing URL if refresh fails
             if (!urlToUse) {
               throw new Error("Failed to refresh video URL");
@@ -128,13 +126,9 @@ function VideoItem({
       onDownloadStart();
       await downloadVideo(urlToUse, `video-${video.id}.mp4`);
       const downloadEndTime = Date.now();
-      console.log("[DEBUG] Download completed in handleDownload", {
-        totalDuration: downloadEndTime - downloadStartTime,
-        timestamp: Date.now(),
-      });
+
       onDownloadEnd();
     } catch (error) {
-      console.error("Error downloading video:", error);
       onDownloadEnd();
       Alert.alert(
         "Download Failed",
@@ -263,6 +257,7 @@ export default function DashboardScreen() {
     deleteVideo,
     refreshVideoSignedUrl,
   } = useVideos();
+  const { voices: VOICES, loading: loadingVoices } = useVoicesList();
   const [searchQuery, setSearchQuery] = useState("");
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -271,6 +266,12 @@ export default function DashboardScreen() {
   const [showCreateInput, setShowCreateInput] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [creatingVideo, setCreatingVideo] = useState(false);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [selectedVoice, setSelectedVoice] = useState<string | null>(null);
+  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const audioPlayersRef = useRef<{ [key: string]: AudioPlayer }>({});
+  const isMountedRef = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Hide input field when keyboard is dismissed
   useEffect(() => {
@@ -279,15 +280,18 @@ export default function DashboardScreen() {
     const keyboardDidHideListener = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
       () => {
-        setPrompt("");
-        setShowCreateInput(false);
+        // Don't clear prompt if voice modal is showing (user is selecting voice)
+        if (!showVoiceModal) {
+          setPrompt("");
+          setShowCreateInput(false);
+        }
       }
     );
 
     return () => {
       keyboardDidHideListener.remove();
     };
-  }, [showCreateInput, prompt]);
+  }, [showCreateInput, prompt, showVoiceModal]);
 
   // Filter videos based on search query
   const filteredVideos = useMemo(() => {
@@ -327,7 +331,6 @@ export default function DashboardScreen() {
       setShowDeleteModal(false);
       setVideoToDelete(null);
     } catch (error) {
-      console.error("Error deleting video:", error);
       Alert.alert(
         "Delete Failed",
         error instanceof Error
@@ -344,10 +347,186 @@ export default function DashboardScreen() {
     setVideoToDelete(null);
   };
 
-  const handleCreateVideo = async () => {
+  // Handle voice preview playback
+  const handlePlayVoice = (voiceId: string, url: string) => {
+    try {
+      // If clicking the same voice, toggle play/pause
+      if (playingVoiceId === voiceId) {
+        const player = audioPlayersRef.current[voiceId];
+        if (player) {
+          if (player.playing) {
+            player.pause();
+            setPlayingVoiceId(null);
+          } else {
+            player.play();
+          }
+        }
+        return;
+      }
+
+      // Stop any currently playing audio
+      for (const [id, player] of Object.entries(audioPlayersRef.current)) {
+        if (player && player.playing) {
+          try {
+            player.pause();
+            player.seekTo(0);
+          } catch (err) {}
+        }
+      }
+
+      // Load and play new voice
+      let player = audioPlayersRef.current[voiceId];
+      let shouldAutoPlay = true;
+
+      if (!player) {
+        // AudioSource can be a string (URI) or an object with uri property
+        const audioSource = { uri: url };
+        player = new (AudioModule as any).AudioPlayer(audioSource, 500, false);
+        audioPlayersRef.current[voiceId] = player;
+
+        // Handle playback finish and errors
+        player.addListener("playbackStatusUpdate", (status: any) => {
+          if (status.isLoaded) {
+            // Auto-play when loaded if we haven't started yet
+            if (shouldAutoPlay && !status.playing && !status.didJustFinish) {
+              player.volume = 1.0;
+              player.muted = false;
+              player.play();
+              setPlayingVoiceId(voiceId);
+              shouldAutoPlay = false;
+            }
+
+            if (status.didJustFinish) {
+              setPlayingVoiceId(null);
+            }
+          }
+        });
+      } else {
+        // Replace source and reset position
+        player.replace({ uri: url });
+        player.seekTo(0);
+
+        // Set up listener for auto-play on load
+        const statusListener = (status: any) => {
+          if (status.isLoaded && shouldAutoPlay && !status.playing) {
+            player.volume = 1.0;
+            player.muted = false;
+            player.play();
+            setPlayingVoiceId(voiceId);
+            shouldAutoPlay = false;
+            player.removeListener("playbackStatusUpdate", statusListener);
+          }
+        };
+        player.addListener("playbackStatusUpdate", statusListener);
+      }
+
+      // Try to play immediately if already loaded
+      if (player.isLoaded) {
+        player.volume = 1.0;
+        player.muted = false;
+        player.play();
+        setPlayingVoiceId(voiceId);
+        shouldAutoPlay = false;
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      Alert.alert("Error", `Failed to play voice preview: ${errorMessage}`);
+      setPlayingVoiceId(null);
+    }
+  };
+
+  // Configure audio mode on mount
+  useEffect(() => {
+    const configureAudio = async () => {
+      try {
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          interruptionMode: "duckOthers",
+          shouldPlayInBackground: false,
+        });
+      } catch (error) {}
+    };
+    configureAudio();
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+
+      // Abort any ongoing fetch requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+
+      // Cleanup all audio players
+      const currentPlayers = audioPlayersRef.current;
+      Object.values(currentPlayers).forEach((player) => {
+        if (player) {
+          try {
+            player.pause();
+            player.seekTo(0);
+            player.remove();
+          } catch (error) {
+            // Silently handle cleanup errors
+          }
+        }
+      });
+      audioPlayersRef.current = {};
+    };
+  }, []);
+
+  // Cleanup audio players when voice changes (stop previous voice)
+  useEffect(() => {
+    // Stop any previously playing voices when a new one starts
+    const previousPlayers = Object.entries(audioPlayersRef.current);
+    previousPlayers.forEach(([voiceId, player]) => {
+      if (voiceId !== playingVoiceId && player && player.playing) {
+        try {
+          player.pause();
+          player.seekTo(0);
+        } catch {
+          // Silently handle cleanup errors
+        }
+      }
+    });
+  }, [playingVoiceId]);
+
+  const handleCreateVideo = () => {
     if (!prompt.trim()) {
       return;
     }
+
+    // Show voice selection modal instead of submitting immediately
+    // Set modal state first to prevent keyboard listener from clearing prompt
+    setShowVoiceModal(true);
+    // Dismiss keyboard after modal state is set
+    setTimeout(() => {
+      Keyboard.dismiss();
+    }, 50);
+  };
+
+  const handleConfirmVoiceAndSubmit = async () => {
+    if (!selectedVoice) {
+      Alert.alert("Error", "Please select a voice");
+      return;
+    }
+
+    // Validate prompt exists - store it in a variable to prevent it from being cleared
+    const promptToSubmit = prompt.trim();
+
+    if (!promptToSubmit) {
+      Alert.alert("Error", "Video prompt is required");
+      setShowVoiceModal(false);
+      return;
+    }
+
+    // Close modal first
+    setShowVoiceModal(false);
 
     // Check if user has any queued videos
     const hasQueuedVideos = videos.some(
@@ -377,20 +556,35 @@ export default function DashboardScreen() {
     setCreatingVideo(true);
 
     try {
-      // Refresh session to ensure we have a fresh token
-      const {
-        data: { session: refreshedSession },
-        error: refreshError,
-      } = await supabase.auth.refreshSession();
+      // Use current session, only refresh if needed
+      let sessionToUse = session;
 
-      if (refreshError || !refreshedSession) {
-        console.error("Error refreshing session:", refreshError);
-        Alert.alert(
-          "Error",
-          "Failed to refresh authentication. Please try again."
-        );
+      if (!session || !session.access_token) {
+        Alert.alert("Error", "User not authenticated");
         setCreatingVideo(false);
         return;
+      }
+
+      // Check if session is close to expiring (within 5 minutes)
+      const expiresAt = session.expires_at ? session.expires_at * 1000 : null;
+      const shouldRefresh = expiresAt && expiresAt - Date.now() < 5 * 60 * 1000;
+
+      if (shouldRefresh) {
+        // Only attempt refresh if session is close to expiring
+        try {
+          const {
+            data: { session: refreshedSession },
+            error: refreshError,
+          } = await supabase.auth.refreshSession();
+
+          if (!refreshError && refreshedSession) {
+            sessionToUse = refreshedSession;
+          }
+          // If refresh fails, silently fall back to current session
+        } catch {
+          // Silently fall back to current session on network errors
+          // The current session should still be valid
+        }
       }
 
       // Get Supabase URL from environment variables first
@@ -404,28 +598,70 @@ export default function DashboardScreen() {
       }
 
       // Call edge function to create video
-      const edgeFunctionUrl = `${supabaseUrl.replace(
-        /^https?:\/\//,
-        "https://"
-      )}/functions/v1/create-video`;
+      // Ensure URL is properly formatted
+      let baseUrl = supabaseUrl.trim();
+      if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+        baseUrl = `https://${baseUrl}`;
+      }
+      const edgeFunctionUrl = `${baseUrl}/functions/v1/create-video`;
 
-      const createVideoResponse = await fetch(edgeFunctionUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${refreshedSession.access_token}`,
-        },
-        body: JSON.stringify({
-          prompt: prompt.trim(),
-          refresh_token: refreshedSession.refresh_token,
-        }),
-      });
+      // Create abort controller for cleanup
+      abortControllerRef.current = new AbortController();
+
+      let createVideoResponse;
+      try {
+        // Create a timeout promise
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(
+            () => reject(new Error("Request timeout")),
+            REQUEST_TIMEOUT_MS
+          );
+        });
+
+        // Race between fetch and timeout
+        createVideoResponse = (await Promise.race([
+          fetch(edgeFunctionUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${sessionToUse.access_token}`,
+            },
+            body: JSON.stringify({
+              prompt: promptToSubmit,
+              refresh_token: sessionToUse.refresh_token,
+              voice: selectedVoice,
+            }),
+            signal: abortControllerRef.current.signal,
+          }).then((response) => {
+            return response;
+          }),
+          timeoutPromise,
+        ])) as Response;
+      } catch (fetchError) {
+        // Check if it's a network error
+        if (
+          fetchError instanceof TypeError &&
+          fetchError.message.includes("Network request failed")
+        ) {
+          throw new Error(
+            "Network request failed. Please check your internet connection and try again."
+          );
+        }
+        if (
+          fetchError instanceof Error &&
+          fetchError.message === "Request timeout"
+        ) {
+          throw new Error(
+            "Request timed out. The server may be slow or unreachable. Please try again."
+          );
+        }
+        throw fetchError;
+      }
 
       if (!createVideoResponse.ok) {
         const errorData = await createVideoResponse.json().catch(() => ({
           error: "Unknown error occurred",
         }));
-        console.error("Error creating video:", errorData);
         throw new Error(errorData.error || "Failed to create video");
       }
 
@@ -442,14 +678,18 @@ export default function DashboardScreen() {
       );
       setPrompt("");
       setShowCreateInput(false);
-    } catch (err) {
-      console.error("Error generating video:", err);
-      Alert.alert(
-        "Error",
-        err instanceof Error ? err.message : "Failed to generate video"
-      );
+      setSelectedVoice(null);
+    } catch (error) {
+      if (isMountedRef.current) {
+        Alert.alert(
+          "Error",
+          error instanceof Error ? error.message : "Failed to generate video"
+        );
+      }
     } finally {
-      setCreatingVideo(false);
+      if (isMountedRef.current) {
+        setCreatingVideo(false);
+      }
     }
   };
 
@@ -653,6 +893,121 @@ export default function DashboardScreen() {
           </View>
         </BlurView>
       </Modal>
+
+      {/* Voice Selection Modal */}
+      <Modal
+        visible={showVoiceModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowVoiceModal(false)}
+      >
+        <BlurView intensity={20} style={styles.modalOverlay}>
+          <View style={styles.voiceModalContent}>
+            <Text style={styles.voiceModalTitle}>Select a Voice</Text>
+            {loadingVoices ? (
+              <View style={styles.voiceLoadingContainer}>
+                <ActivityIndicator size="large" color={Colors.cyan[500]} />
+                <Text style={styles.voiceLoadingText}>Loading voices...</Text>
+              </View>
+            ) : VOICES.length === 0 ? (
+              <View style={styles.voiceLoadingContainer}>
+                <Text style={styles.voiceLoadingText}>No voices available</Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={styles.voiceList}
+                showsVerticalScrollIndicator={false}
+              >
+                {VOICES.map((voice) => (
+                  <TouchableOpacity
+                    key={voice.id}
+                    style={[
+                      styles.voiceItem,
+                      selectedVoice === voice.id && styles.voiceItemSelected,
+                    ]}
+                    onPress={() => setSelectedVoice(voice.id)}
+                    activeOpacity={0.7}
+                  >
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handlePlayVoice(voice.id, voice.url);
+                      }}
+                      style={styles.voicePlayButton}
+                      activeOpacity={0.8}
+                    >
+                      {playingVoiceId === voice.id ? (
+                        <Ionicons name="pause" size={20} color="#FFFFFF" />
+                      ) : (
+                        <Ionicons name="play" size={20} color="#FFFFFF" />
+                      )}
+                    </TouchableOpacity>
+                    <View style={styles.voiceInfo}>
+                      <Text style={styles.voiceName}>{voice.displayName}</Text>
+                      <View
+                        style={[
+                          styles.voiceGenderBadge,
+                          voice.gender === "male"
+                            ? styles.voiceGenderMale
+                            : styles.voiceGenderFemale,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.voiceGenderText,
+                            voice.gender === "male"
+                              ? styles.voiceGenderTextMale
+                              : styles.voiceGenderTextFemale,
+                          ]}
+                        >
+                          {voice.gender === "male" ? "Male" : "Female"}
+                        </Text>
+                      </View>
+                    </View>
+                    <View
+                      style={[
+                        styles.voiceRadio,
+                        selectedVoice === voice.id && styles.voiceRadioSelected,
+                      ]}
+                    >
+                      {selectedVoice === voice.id && (
+                        <View style={styles.voiceRadioInner} />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+            <View style={styles.voiceModalActions}>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowVoiceModal(false);
+                  setSelectedVoice(null);
+                }}
+                style={[styles.voiceModalButton, styles.voiceModalCancelButton]}
+              >
+                <Text style={styles.voiceModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleConfirmVoiceAndSubmit}
+                disabled={!selectedVoice || creatingVideo}
+                style={[
+                  styles.voiceModalButton,
+                  styles.voiceModalConfirmButton,
+                  (!selectedVoice || creatingVideo) &&
+                    styles.voiceModalButtonDisabled,
+                ]}
+              >
+                {creatingVideo ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.voiceModalConfirmText}>Confirm</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </BlurView>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -692,7 +1047,7 @@ const styles = StyleSheet.create({
   },
   createInput: {
     flex: 1,
-    backgroundColor: "rgba(60, 60, 60, 0.8)",
+    backgroundColor: "rgba(60, 60, 60, 1.0) ",
     color: "#FFFFFF",
     fontSize: 16,
     borderRadius: 20,
@@ -906,6 +1261,145 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   confirmButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  voiceModalContent: {
+    backgroundColor: "rgba(30, 30, 30, 0.95)",
+    borderRadius: 20,
+    padding: 24,
+    maxWidth: 400,
+    width: "90%",
+    maxHeight: "80%",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  voiceModalTitle: {
+    color: "#FFFFFF",
+    fontSize: 24,
+    fontWeight: "700",
+    marginBottom: 20,
+    textAlign: "center",
+  },
+  voiceLoadingContainer: {
+    padding: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  voiceLoadingText: {
+    color: Colors.text.gray[400],
+    fontSize: 16,
+    marginTop: 12,
+  },
+  voiceList: {
+    maxHeight: 400,
+    marginBottom: 20,
+  },
+  voiceItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    marginBottom: 12,
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  voiceItemSelected: {
+    borderColor: Colors.cyan[500],
+    backgroundColor: "rgba(6, 182, 212, 0.1)",
+  },
+  voicePlayButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.cyan[500],
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  voiceInfo: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  voiceName: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  voiceGenderBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  voiceGenderMale: {
+    backgroundColor: "rgba(59, 130, 246, 0.2)",
+  },
+  voiceGenderFemale: {
+    backgroundColor: "rgba(236, 72, 153, 0.2)",
+  },
+  voiceGenderText: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  voiceGenderTextMale: {
+    color: "#93c5fd",
+  },
+  voiceGenderTextFemale: {
+    color: "#f9a8d4",
+  },
+  voiceRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: "rgba(255, 255, 255, 0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  voiceRadioSelected: {
+    borderColor: Colors.cyan[500],
+    backgroundColor: Colors.cyan[500],
+  },
+  voiceRadioInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#1a1a1a",
+  },
+  voiceModalActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8,
+  },
+  voiceModalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  voiceModalCancelButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  voiceModalConfirmButton: {
+    backgroundColor: Colors.cyan[500],
+  },
+  voiceModalButtonDisabled: {
+    opacity: 0.5,
+  },
+  voiceModalCancelText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  voiceModalConfirmText: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "700",
