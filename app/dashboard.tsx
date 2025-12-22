@@ -302,6 +302,13 @@ export default function DashboardScreen() {
     return videos.filter((video) => video.prompt.toLowerCase().includes(query));
   }, [videos, searchQuery]);
 
+  // Check if there are any queued or processing videos
+  const hasQueuedOrProcessingVideos = useMemo(() => {
+    return videos.some(
+      (v) => v.status === "queued" || v.status === "processing"
+    );
+  }, [videos]);
+
   const handleEndReached = () => {
     if (hasMore && !loadingMore && !loading && !searchQuery.trim()) {
       loadMore();
@@ -832,6 +839,7 @@ export default function DashboardScreen() {
         onPressBilling={() => router.push("/profile/billing")}
         onPressProfile={() => router.push("/profile")}
         onPressAdd={() => setShowCreateInput(true)}
+        addButtonDisabled={hasQueuedOrProcessingVideos}
       />
 
       {/* Download Progress Modal */}

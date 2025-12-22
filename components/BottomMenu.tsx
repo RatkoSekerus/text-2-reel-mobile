@@ -17,6 +17,7 @@ type Props = {
   onPressProfile: () => void;
   onPressAdd: () => void;
   containerStyle?: StyleProp<ViewStyle>;
+  addButtonDisabled?: boolean;
 };
 
 export function BottomMenu({
@@ -25,6 +26,7 @@ export function BottomMenu({
   onPressProfile,
   onPressAdd,
   containerStyle,
+  addButtonDisabled = false,
 }: Props) {
   return (
     <View style={[styles.bottomMenu, containerStyle]}>
@@ -47,11 +49,19 @@ export function BottomMenu({
 
       <View pointerEvents="box-none" style={styles.centerOverlay}>
         <TouchableOpacity
-          style={styles.addButton}
+          style={[
+            styles.addButton,
+            addButtonDisabled && styles.addButtonDisabled,
+          ]}
           activeOpacity={0.8}
-          onPress={onPressAdd}
+          onPress={addButtonDisabled ? undefined : onPressAdd}
+          disabled={addButtonDisabled}
         >
-          <Ionicons name="add" size={32} color="#FFFFFF" />
+          <Ionicons
+            name="add"
+            size={32}
+            color={addButtonDisabled ? "#666666" : "#FFFFFF"}
+          />
         </TouchableOpacity>
       </View>
     </View>
@@ -110,16 +120,11 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
+  addButtonDisabled: {
+    backgroundColor: "#2a2a2a",
+    shadowOpacity: 0,
+    elevation: 0,
+  },
 });
 
 export default BottomMenu;
-
-
-
-
-
-
-
-
-
-
